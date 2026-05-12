@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { sanitizeError, splitMessage } from "@/lib/slack/formatter";
 
 describe("splitMessage", () => {
-  it("returns [\"\"] for empty input", () => {
+  it('returns [""] for empty input', () => {
     expect(splitMessage("")).toEqual([""]);
   });
 
@@ -36,7 +36,7 @@ describe("splitMessage", () => {
   it("balances code fences when the cut splits a block", () => {
     // The first chunk would otherwise end with an opening fence and no close.
     const before = "intro paragraph.\n\n";
-    const block = "```\n" + ("line\n".repeat(40)) + "```";
+    const block = "```\n" + "line\n".repeat(40) + "```";
     const text = before + block;
     const chunks = splitMessage(text, 120);
     // Every chunk must have an even number of fences (balanced).
@@ -47,7 +47,7 @@ describe("splitMessage", () => {
   });
 
   it("respects max length even when splitting mid-block", () => {
-    const block = "```\n" + ("x".repeat(500)) + "\n```";
+    const block = "```\n" + "x".repeat(500) + "\n```";
     const chunks = splitMessage(block, 100);
     chunks.forEach((c) => expect(c.length).toBeLessThanOrEqual(100));
   });
@@ -67,15 +67,11 @@ describe("sanitizeError", () => {
   });
 
   it("redacts Slack tokens", () => {
-    expect(sanitizeError(new Error("xoxb-1234-5678-abcdef"))).toContain(
-      "[redacted-slack-token]",
-    );
+    expect(sanitizeError(new Error("xoxb-1234-5678-abcdef"))).toContain("[redacted-slack-token]");
   });
 
   it("redacts xAI keys", () => {
-    expect(sanitizeError(new Error("xai-abcdefghij1234567890"))).toContain(
-      "[redacted-xai-key]",
-    );
+    expect(sanitizeError(new Error("xai-abcdefghij1234567890"))).toContain("[redacted-xai-key]");
   });
 
   it("redacts Tavily keys", () => {
@@ -91,9 +87,9 @@ describe("sanitizeError", () => {
   });
 
   it("strips ts/js paths", () => {
-    expect(
-      sanitizeError(new Error("at /src/lib/slack/verify.ts:42 thing failed")),
-    ).toContain("[path]");
+    expect(sanitizeError(new Error("at /src/lib/slack/verify.ts:42 thing failed"))).toContain(
+      "[path]",
+    );
   });
 
   it("truncates very long messages", () => {

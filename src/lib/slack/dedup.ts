@@ -99,9 +99,7 @@ export const markDone = async (
     ttl: ttlFromDate((nowEpoch() + ttlSeconds) * 1000),
   };
   try {
-    await getDocumentClient().send(
-      new PutCommand({ TableName: getTableName(), Item: item }),
-    );
+    await getDocumentClient().send(new PutCommand({ TableName: getTableName(), Item: item }));
   } catch (err) {
     // Non-fatal: at worst a future retry re-runs the agent. We log so
     // operators can spot a chronic outage; we do not raise into the

@@ -33,12 +33,7 @@ interface UsersInfoResponseShape {
 
 const resolveName = (userId: string, info: UsersInfoResponseShape): string => {
   const profile = info.user?.profile;
-  return (
-    profile?.display_name ||
-    profile?.real_name ||
-    info.user?.real_name ||
-    userId
-  );
+  return profile?.display_name || profile?.real_name || info.user?.real_name || userId;
 };
 
 export const getUserName = async (client: WebClient, userId: string): Promise<string> => {

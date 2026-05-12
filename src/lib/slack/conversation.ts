@@ -117,10 +117,7 @@ const ITEM_SEPARATOR = 1;
  * separator. Empty list serializes to "[]" (2 chars), which is always
  * within budget for any non-trivial maxChars.
  */
-export const truncateToChars = (
-  messages: ThreadMessage[],
-  maxChars: number,
-): ThreadMessage[] => {
+export const truncateToChars = (messages: ThreadMessage[], maxChars: number): ThreadMessage[] => {
   if (messages.length === 0) return [];
   const sizes = messages.map((m) => JSON.stringify(m).length);
   let total = ARRAY_BRACKETS;

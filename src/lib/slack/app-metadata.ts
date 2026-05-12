@@ -196,10 +196,7 @@ export const unsetSlackAppPersona = async (apiAppId: string): Promise<void> => {
   await updateItem(keys.slackApp(apiAppId), {}, ["personaMessage"]);
 };
 
-export const setSlackAppDisplayName = async (
-  apiAppId: string,
-  value: string,
-): Promise<void> => {
+export const setSlackAppDisplayName = async (apiAppId: string, value: string): Promise<void> => {
   await updateItem(keys.slackApp(apiAppId), { displayName: value });
 };
 
@@ -231,7 +228,5 @@ export const findSlackAppByTeamId = async (teamId: string): Promise<SlackAppReco
     gsi1.bySlackTeam(teamId).GSI1PK,
     gsi1.bySlackTeam(teamId).GSI1SK,
   );
-  return items
-    .map((row) => rowToRecord(row))
-    .filter((r): r is SlackAppRecord => r !== null);
+  return items.map((row) => rowToRecord(row)).filter((r): r is SlackAppRecord => r !== null);
 };
