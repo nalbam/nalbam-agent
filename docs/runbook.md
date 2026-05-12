@@ -26,7 +26,7 @@ Sanity check:
 - <http://localhost:3000> renders the landing page.
 - <http://localhost:3000/api/health> → 200 OK.
 - The DynamoDB table is visible in the AWS console under the configured region.
-- `docker exec starter-valkey valkey-cli ping` → `PONG`.
+- `docker exec nalbam-agent-valkey valkey-cli ping` → `PONG`.
 
 ### Offline / integration-test mode
 
@@ -160,7 +160,7 @@ When `secondaryStorage` is configured (default), Better Auth stores sessions in 
 
 ```bash
 # Local (Valkey)
-docker exec starter-valkey valkey-cli FLUSHDB
+docker exec nalbam-agent-valkey valkey-cli FLUSHDB
 
 # Upstash REST
 curl -X POST "$UPSTASH_REDIS_REST_URL/flushdb" \

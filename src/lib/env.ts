@@ -116,7 +116,7 @@ const serverSchema = z.object({
 
 const clientSchema = z.object({
   NEXT_PUBLIC_BETTER_AUTH_URL: z.string().url().optional(),
-  NEXT_PUBLIC_APP_NAME: z.string().default("Next.js Tailwind Starter"),
+  NEXT_PUBLIC_APP_NAME: z.string().default("nalbam-agent"),
   NEXT_PUBLIC_AUTH_EMAIL_ENABLED: z
     .union([z.literal("true"), z.literal("false")])
     .optional()

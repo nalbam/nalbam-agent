@@ -113,7 +113,7 @@ Set these in Amplify Hosting → *App settings → Environment variables*:
 | `BETTER_AUTH_URL` | yes | e.g. `https://app.example.com` |
 | `TRUSTED_ORIGINS` | optional | Comma-separated additional origins |
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | yes | Same as above (client-side) |
-| `NEXT_PUBLIC_APP_NAME` | optional | Defaults to `Next.js Tailwind Starter` |
+| `NEXT_PUBLIC_APP_NAME` | optional | Defaults to `nalbam-agent` |
 | `AWS_REGION` | yes | Region of your DynamoDB table |
 | `DYNAMODB_TABLE_NAME` | yes | e.g. `app-main` |
 | `UPSTASH_REDIS_REST_URL` | yes (prod) | From Upstash console |
