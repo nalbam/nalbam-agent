@@ -1,0 +1,55 @@
+# Dev defaults to real AWS DynamoDB (see .env.example).
+# - `valkey` runs by default for Better Auth's secondaryStorage in local dev.
+# - `dynamodb-local` + `dynamodb-admin` live under the `test` profile and
+#   are intended for the integration test suite. Start them explicitly with
+#   `docker compose --profile test up -d` and set DYNAMODB_ENDPOINT.
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: starter-valkey
+    command: ["valkey-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: starter-dynamodb-local
+    profiles: ["test"]
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    working_dir: /home/dynamodblocal
+    user: root
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: starter-dynamodb-admin
+    profiles: ["test"]
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    ports:
+      - "8001:8001"
+
+volumes:
+  dynamodb-data:
+  valkey-data:

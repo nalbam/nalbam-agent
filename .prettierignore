@@ -1,0 +1,14 @@
+pnpm-lock.yaml
+.next
+.next/**
+out
+out/**
+build
+build/**
+coverage
+coverage/**
+node_modules
+node_modules/**
+public
+src/app/icon.svg
+*.md

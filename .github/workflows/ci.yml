@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+
+    env:
+      BETTER_AUTH_SECRET: ci-test-secret-1234567890-abcdefghijk
+      AWS_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      DYNAMODB_TABLE_NAME: app-main-test
+      DYNAMODB_ENDPOINT: http://localhost:8000
+      # Forces the adapter integration suite to run for real instead of
+      # silently skipping when the service container is unreachable.
+      DDB_INTEGRATION_REQUIRED: "true"
+      REDIS_URL: redis://localhost:6379
+      NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_NAME: CI
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Provision DynamoDB Local table
+        run: pnpm db:init
+
+      - name: Audit dependencies
+        # Fails on high or critical vulnerabilities. Lower severities still
+        # surface in the log but don't block CI.
+        run: pnpm audit --audit-level high
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

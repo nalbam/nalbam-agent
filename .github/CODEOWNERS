@@ -1,0 +1,13 @@
+# Default owner for everything in the repo.
+*       @nalbam
+
+# Auth & data layer require extra scrutiny.
+/src/lib/auth/         @nalbam
+/src/lib/dynamodb*.ts  @nalbam
+/src/proxy.ts          @nalbam
+/src/lib/env.ts        @nalbam
+
+# Deployment surface.
+/amplify.yml           @nalbam
+/docs/                 @nalbam
+/.github/              @nalbam
