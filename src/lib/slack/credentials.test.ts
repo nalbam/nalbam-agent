@@ -12,6 +12,14 @@ const APP = "A0XXXX";
 const signingName = `${PREFIX}/${APP}/signing_secret`;
 const tokenName = `${PREFIX}/${APP}/bot_token`;
 
+type GetParametersFn = (names: string[]) => Promise<Record<string, string>>;
+
+const mockClient = (getParameters: GetParametersFn) => ({
+  getParameters,
+  putParameter: vi.fn(async () => {}),
+  deleteParameter: vi.fn(async () => {}),
+});
+
 beforeEach(() => {
   __resetSlackCredentialsForTests();
 });
@@ -22,7 +30,7 @@ describe("getSlackCredentials", () => {
       [signingName]: "ss",
       [tokenName]: "xoxb-abc",
     }));
-    const client = { getParameters };
+    const client = mockClient(getParameters);
     let clock = 1_000;
     const nowSeconds = () => clock;
 
@@ -50,7 +58,7 @@ describe("getSlackCredentials", () => {
       [signingName]: "ss",
       [tokenName]: "xoxb-1",
     }));
-    const client = { getParameters };
+    const client = mockClient(getParameters);
     let clock = 1_000;
     const nowSeconds = () => clock;
 
@@ -62,7 +70,7 @@ describe("getSlackCredentials", () => {
 
   it("negative-caches a partially configured app", async () => {
     const getParameters = vi.fn(async () => ({ [signingName]: "ss" })); // token missing
-    const client = { getParameters };
+    const client = mockClient(getParameters);
     let clock = 1_000;
     const nowSeconds = () => clock;
 
@@ -89,7 +97,7 @@ describe("getSlackCredentials", () => {
       .fn()
       .mockRejectedValueOnce(new Error("throttled"))
       .mockResolvedValueOnce({ [signingName]: "ss", [tokenName]: "xoxb-z" });
-    const client = { getParameters };
+    const client = mockClient(getParameters);
     const nowSeconds = () => 1_000;
 
     const first = await getSlackCredentials(APP, {
@@ -115,7 +123,7 @@ describe("getSlackCredentials", () => {
       .fn()
       .mockResolvedValueOnce({ [signingName]: "ss", [tokenName]: "xoxb-old" })
       .mockResolvedValueOnce({ [signingName]: "ss", [tokenName]: "xoxb-new" });
-    const client = { getParameters };
+    const client = mockClient(getParameters);
     const nowSeconds = () => 1_000;
 
     const first = await getSlackCredentials(APP, {
@@ -137,7 +145,7 @@ describe("getSlackCredentials", () => {
 
   it("returns null for empty apiAppId without hitting SSM", async () => {
     const getParameters = vi.fn();
-    const client = { getParameters };
+    const client = mockClient(getParameters);
     const r = await getSlackCredentials("", {
       client,
       prefix: PREFIX,

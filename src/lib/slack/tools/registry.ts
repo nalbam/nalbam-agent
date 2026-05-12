@@ -25,11 +25,7 @@ import {
   readAttachedDocumentTool,
   readAttachedImagesTool,
 } from "@/lib/slack/tools/slack-tools";
-import {
-  attachImageFromUrlTool,
-  editImageTool,
-  generateImageTool,
-} from "@/lib/slack/tools/image";
+import { attachImageFromUrlTool, editImageTool, generateImageTool } from "@/lib/slack/tools/image";
 
 export interface SlackToolEvent {
   channel?: string;

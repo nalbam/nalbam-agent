@@ -27,13 +27,16 @@ type CacheEntry = { expiresAt: number; value: SlackAppCredentials | null };
 
 interface SsmGetParametersClient {
   getParameters: (names: string[]) => Promise<Record<string, string>>;
+  putParameter: (name: string, value: string) => Promise<void>;
+  deleteParameter: (name: string) => Promise<void>;
 }
 
 let cachedClient: SsmGetParametersClient | undefined;
 const cache = new Map<string, CacheEntry>();
 
 const buildClient = async (): Promise<SsmGetParametersClient> => {
-  const { SSMClient, GetParametersCommand } = await import("@aws-sdk/client-ssm");
+  const { SSMClient, GetParametersCommand, PutParameterCommand, DeleteParameterCommand } =
+    await import("@aws-sdk/client-ssm");
   const client = new SSMClient({ region: getServerEnv().AWS_REGION });
   return {
     getParameters: async (names) => {
@@ -47,6 +50,26 @@ const buildClient = async (): Promise<SsmGetParametersClient> => {
         }
       }
       return out;
+    },
+    putParameter: async (name, value) => {
+      await client.send(
+        new PutParameterCommand({
+          Name: name,
+          Value: value,
+          Type: "SecureString",
+          Overwrite: true,
+        }),
+      );
+    },
+    deleteParameter: async (name) => {
+      try {
+        await client.send(new DeleteParameterCommand({ Name: name }));
+      } catch (err) {
+        // ParameterNotFound: nothing to delete; treat as success.
+        const code = (err as { name?: string }).name;
+        if (code === "ParameterNotFound") return;
+        throw err;
+      }
     },
   };
 };
@@ -127,6 +150,46 @@ export const getSlackCredentials = async (
 
 export const invalidateSlackCredentials = (apiAppId: string): void => {
   cache.delete(apiAppId);
+};
+
+/**
+ * Write Slack credentials to SSM as SecureString. Used by the operator UI
+ * and the bootstrap CLI. Both parameters are written before the cache is
+ * invalidated so a follow-up event sees the new values atomically.
+ */
+export const putSlackCredentials = async (
+  apiAppId: string,
+  creds: SlackAppCredentials,
+  deps: CredentialsStoreDeps = {},
+): Promise<void> => {
+  if (!apiAppId) throw new Error("apiAppId is required");
+  const { client, prefix } = await resolveDeps(deps);
+  const signingName = `${prefix}/${apiAppId}/signing_secret`;
+  const tokenName = `${prefix}/${apiAppId}/bot_token`;
+  await Promise.all([
+    client.putParameter(signingName, creds.signingSecret),
+    client.putParameter(tokenName, creds.botToken),
+  ]);
+  invalidateSlackCredentials(apiAppId);
+};
+
+/**
+ * Remove Slack credentials from SSM. Missing parameters are silently
+ * treated as success so retries are idempotent.
+ */
+export const deleteSlackCredentials = async (
+  apiAppId: string,
+  deps: CredentialsStoreDeps = {},
+): Promise<void> => {
+  if (!apiAppId) throw new Error("apiAppId is required");
+  const { client, prefix } = await resolveDeps(deps);
+  const signingName = `${prefix}/${apiAppId}/signing_secret`;
+  const tokenName = `${prefix}/${apiAppId}/bot_token`;
+  await Promise.all([
+    client.deleteParameter(signingName),
+    client.deleteParameter(tokenName),
+  ]);
+  invalidateSlackCredentials(apiAppId);
 };
 
 /** Test-only helper to reset module-level state between tests. */

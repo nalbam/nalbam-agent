@@ -58,9 +58,7 @@ const validatePublicHttpsUrl = async (raw: string): Promise<URL> => {
   try {
     infos = await lookup(host, { all: true });
   } catch (err) {
-    throw new Error(
-      `DNS resolution failed: ${err instanceof Error ? err.message : "unknown"}`,
-    );
+    throw new Error(`DNS resolution failed: ${err instanceof Error ? err.message : "unknown"}`);
   }
   if (infos.length === 0) throw new Error("DNS resolution returned no addresses");
   for (const info of infos) {
@@ -71,10 +69,7 @@ const validatePublicHttpsUrl = async (raw: string): Promise<URL> => {
   return parsed;
 };
 
-const fetchWithDeadline = async (
-  url: string,
-  init: RequestInit,
-): Promise<Response> => {
+const fetchWithDeadline = async (url: string, init: RequestInit): Promise<Response> => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -121,16 +116,14 @@ const readBodyCapped = async (res: Response, maxBytes: number): Promise<Uint8Arr
 
 const detectImageMime = (body: Uint8Array): string | undefined => {
   if (body.length < 4) return undefined;
-  if (
-    body[0] === 0x89 &&
-    body[1] === 0x50 &&
-    body[2] === 0x4e &&
-    body[3] === 0x47
-  )
+  if (body[0] === 0x89 && body[1] === 0x50 && body[2] === 0x4e && body[3] === 0x47)
     return "image/png";
   if (body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) return "image/jpeg";
   if (
-    (body[0] === 0x47 && body[1] === 0x49 && body[2] === 0x46 && body[3] === 0x38) // "GIF8"
+    body[0] === 0x47 &&
+    body[1] === 0x49 &&
+    body[2] === 0x46 &&
+    body[3] === 0x38 // "GIF8"
   )
     return "image/gif";
   if (
@@ -261,10 +254,7 @@ export const generateImageTool = (ctx: ToolContext): Tool =>
 
 const attachImageSchema = z.object({
   url: z.string().describe("Absolute https URL of the image to attach."),
-  title: z
-    .string()
-    .optional()
-    .describe("Optional Slack file title shown above the upload."),
+  title: z.string().optional().describe("Optional Slack file title shown above the upload."),
 });
 
 export const attachImageFromUrlTool = (ctx: ToolContext): Tool =>
@@ -282,14 +272,10 @@ export const attachImageFromUrlTool = (ctx: ToolContext): Tool =>
       if (res.status < 200 || res.status >= 300) {
         throw new Error(`HTTP ${res.status}`);
       }
-      const headerMime = (res.headers.get("content-type") ?? "")
-        .split(";", 1)[0]
-        ?.trim()
-        .toLowerCase() ?? "";
+      const headerMime =
+        (res.headers.get("content-type") ?? "").split(";", 1)[0]?.trim().toLowerCase() ?? "";
       if (!headerMime.startsWith("image/")) {
-        throw new Error(
-          `URL did not return an image (Content-Type=${headerMime || "missing"})`,
-        );
+        throw new Error(`URL did not return an image (Content-Type=${headerMime || "missing"})`);
       }
       const body = await readBodyCapped(res, env.MAX_IMAGE_BYTES);
       const detected = detectImageMime(body);

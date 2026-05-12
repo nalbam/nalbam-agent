@@ -71,6 +71,38 @@ If you set `AWS_SES_FROM` to enable transactional email, also attach an SES stat
 }
 ```
 
+### Slack bot statements
+
+When you enable the multi-tenant Slack bot (`/api/slack/events`), the compute role needs two extra capabilities — read/write per-app secrets in SSM Parameter Store, and invoke Bedrock models if you set `LLM_PROVIDER=bedrock`. Add the following statements to the SSR Compute role policy:
+
+```json
+{
+  "Sid": "SlackSecretsParameterStore",
+  "Effect": "Allow",
+  "Action": [
+    "ssm:GetParameters",
+    "ssm:PutParameter",
+    "ssm:DeleteParameter"
+  ],
+  "Resource": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/nalbam-agent/slack/apps/*"
+},
+{
+  "Sid": "BedrockInvokeForLLM",
+  "Effect": "Allow",
+  "Action": [
+    "bedrock:InvokeModel",
+    "bedrock:InvokeModelWithResponseStream",
+    "bedrock:Converse",
+    "bedrock:ConverseStream"
+  ],
+  "Resource": "*"
+}
+```
+
+Tighten the SSM resource ARN to your actual `SLACK_SSM_PREFIX` if you've overridden it. Drop the Bedrock statement entirely when only using OpenAI.
+
+`ssm:PutParameter` / `ssm:DeleteParameter` are required by the operator UI (`/slack/new` and the danger-zone delete in `/slack/[appId]`) and the `pnpm slack-apps register|delete` CLI. If you only ever bootstrap apps out-of-band (e.g. via Terraform), restrict to `ssm:GetParameters`.
+
 ## 3. Environment variables
 
 Set these in Amplify Hosting → *App settings → Environment variables*:
@@ -94,6 +126,29 @@ Set these in Amplify Hosting → *App settings → Environment variables*:
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | OAuth client from <https://console.cloud.google.com/apis/credentials>. Authorized redirect URI must include `${BETTER_AUTH_URL}/api/auth/callback/google`. |
 | `NEXT_PUBLIC_AUTH_GOOGLE_ENABLED` | optional | Set to `true` to render the "Continue with Google" button. Set together with the two `AUTH_GOOGLE_*` secrets. |
 | `LOG_LEVEL` | optional | One of `debug` / `info` / `warn` / `error`. Defaults to `info` in production. |
+
+### Slack bot variables
+
+When `/api/slack/events` is wired up:
+
+| Variable | Required | Notes |
+|---|---|---|
+| `SLACK_SSM_PREFIX` | optional | SSM path prefix for per-app SecureString parameters. Default `/nalbam-agent/slack/apps`. |
+| `SLACK_SSM_CACHE_TTL_SECONDS` | optional | In-process credential cache TTL. Default `300`. |
+| `LLM_PROVIDER` / `LLM_MODEL` | optional | Defaults `openai` / `gpt-4o-mini`. Set to `bedrock` to route through AWS Bedrock (requires the Bedrock IAM statement above). |
+| `IMAGE_PROVIDER` / `IMAGE_MODEL` | optional | Defaults to `LLM_PROVIDER` / `gpt-image-1`. Image-edit support is limited (see `tools/image.ts`). |
+| `OPENAI_API_KEY` | required when provider is `openai` | OpenAI text + image generation. |
+| `TAVILY_API_KEY` | optional | Enables Tavily for `search_web` + `search_images`. Without it, `search_web` falls back to DuckDuckGo and `search_images` returns an error. |
+| `AGENT_MAX_STEPS` / `MAX_OUTPUT_TOKENS` | optional | Agent loop budget. Defaults `6` / `4096`. |
+| `RESPONSE_LANGUAGE` | optional | `ko` (default) or `en`. Drives system-prompt language directive. |
+| `SYSTEM_MESSAGE` | optional | Operator policy appended to the base task rules. Global only (no per-app override). |
+| `PERSONA_MESSAGE` | optional | Default tone/persona. Per-app override available in the `/slack/[appId]` UI. |
+| `BOT_CURSOR` | optional | Emoji shown while streaming. Default `:robot_face:`. |
+| `MAX_LEN_SLACK` / `MAX_HISTORY_CHARS` | optional | Per-message char cap and per-thread serialized history cap. Defaults `3000` / `4000`. |
+| `ALLOWED_CHANNEL_IDS` / `ALLOWED_USER_IDS` | optional | Global allowlists (CSV). Per-app overrides take precedence. |
+| `ALLOWED_CHANNEL_MESSAGE` / `ALLOWED_USER_MESSAGE` | optional | Deny messages. `{}` in the channel deny message renders as `<#FIRST_CHANNEL_ID>`. |
+| `DEFAULT_TIMEZONE` | optional | IANA name used by `get_current_time` when none is supplied. Default `Asia/Seoul`. |
+| `MAX_DOC_*`, `MAX_WEB_*`, `MAX_IMAGE_BYTES`, `JINA_READER_BASE` | optional | Web / document / image tool caps. Defaults are conservative enough for most deployments. |
 
 The repo's [`amplify.yml`](../amplify.yml) handles install + build; no further build configuration is required.
 
