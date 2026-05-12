@@ -25,7 +25,12 @@ import { z } from "zod";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { describeImage } from "@/lib/llm/vision";
-import { findUserIdByName, setUserName, warmUserNames, getUserName } from "@/lib/slack/user-name-cache";
+import {
+  findUserIdByName,
+  setUserName,
+  warmUserNames,
+  getUserName,
+} from "@/lib/slack/user-name-cache";
 
 import type { ToolContext } from "@/lib/slack/tools/registry";
 
@@ -48,10 +53,7 @@ const HISTORY_TOTAL_CHARS = 30_000;
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────
 
-const fetchWithDeadline = async (
-  url: string,
-  init: RequestInit,
-): Promise<Response> => {
+const fetchWithDeadline = async (url: string, init: RequestInit): Promise<Response> => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -114,10 +116,7 @@ const downloadSlackFile = async (
   if (res.status < 200 || res.status >= 300) {
     throw new Error(`HTTP ${res.status}`);
   }
-  const mime = (res.headers.get("content-type") ?? "")
-    .split(";", 1)[0]
-    ?.trim()
-    .toLowerCase() ?? "";
+  const mime = (res.headers.get("content-type") ?? "").split(";", 1)[0]?.trim().toLowerCase() ?? "";
   const body = await readBodyCapped(res, maxBytes);
   return { body, mime };
 };
@@ -243,9 +242,7 @@ export const readAttachedImagesTool = (ctx: ToolContext): Tool =>
 // ── fetch_user_profile ──────────────────────────────────────────────────
 
 const userProfileSchema = z.object({
-  user: z
-    .string()
-    .describe("Slack user ID (U…/W…), <@U…> mention, or display name."),
+  user: z.string().describe("Slack user ID (U…/W…), <@U…> mention, or display name."),
 });
 
 const resolveUserId = (identifier: string): string | undefined => {
@@ -488,11 +485,7 @@ interface SlackHistoryMessage {
   reactions?: SlackHistoryReaction[];
 }
 
-const withSlackRetry = async <T>(
-  fn: () => Promise<T>,
-  label: string,
-  attempts = 3,
-): Promise<T> => {
+const withSlackRetry = async <T>(fn: () => Promise<T>, label: string, attempts = 3): Promise<T> => {
   let delayMs = 1000;
   for (let i = 0; i < attempts; i += 1) {
     try {
@@ -561,9 +554,7 @@ export const fetchThreadHistoryTool = (ctx: ToolContext): Tool =>
           (m.reactions ?? []).map(async (r) => ({
             emoji: r.name ?? "",
             count: r.count ?? 0,
-            users: await Promise.all(
-              (r.users ?? []).map((u) => getUserName(ctx.client, u)),
-            ),
+            users: await Promise.all((r.users ?? []).map((u) => getUserName(ctx.client, u))),
           })),
         );
         let text = m.text ?? "";

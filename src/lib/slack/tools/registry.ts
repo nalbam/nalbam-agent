@@ -25,6 +25,11 @@ import {
   readAttachedDocumentTool,
   readAttachedImagesTool,
 } from "@/lib/slack/tools/slack-tools";
+import {
+  attachImageFromUrlTool,
+  editImageTool,
+  generateImageTool,
+} from "@/lib/slack/tools/image";
 
 export interface SlackToolEvent {
   channel?: string;
@@ -56,5 +61,8 @@ export const buildToolRegistry = (context: ToolContext): ToolDict => {
     read_attached_document: readAttachedDocumentTool(context),
     fetch_user_profile: fetchUserProfileTool(context),
     fetch_thread_history: fetchThreadHistoryTool(context),
+    generate_image: generateImageTool(context),
+    attach_image_from_url: attachImageFromUrlTool(context),
+    edit_image: editImageTool(context),
   };
 };

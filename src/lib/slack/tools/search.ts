@@ -18,10 +18,7 @@ const TAVILY_URL = "https://api.tavily.com/search";
 const FETCH_TIMEOUT_MS = 15_000;
 const SEARCH_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
-const fetchWithDeadline = async (
-  url: string,
-  init: RequestInit,
-): Promise<Response> => {
+const fetchWithDeadline = async (url: string, init: RequestInit): Promise<Response> => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {

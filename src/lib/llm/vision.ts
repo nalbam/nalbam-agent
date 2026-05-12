@@ -24,10 +24,7 @@ export interface DescribeImageInput {
   mediaType: string;
 }
 
-export const describeImage = async ({
-  data,
-  mediaType,
-}: DescribeImageInput): Promise<string> => {
+export const describeImage = async ({ data, mediaType }: DescribeImageInput): Promise<string> => {
   const env = getServerEnv();
   const prompt = DESCRIBE_PROMPT[env.RESPONSE_LANGUAGE];
   const { text } = await generateText({

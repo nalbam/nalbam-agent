@@ -39,8 +39,7 @@ const tryFormat = (tz: string, now: Date): CurrentTimeResult => {
     hour12: false,
     weekday: "long",
   }).formatToParts(now);
-  const get = (type: string): string =>
-    parts.find((p) => p.type === type)?.value ?? "";
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
   const year = get("year");
   const month = get("month");
   const day = get("day");

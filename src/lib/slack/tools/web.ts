@@ -27,8 +27,7 @@ import { z } from "zod";
 
 import { getServerEnv } from "@/lib/env";
 
-const USER_AGENT =
-  "nalbam-agent/1.0 (+https://github.com/nalbam/nalbam-agent)";
+const USER_AGENT = "nalbam-agent/1.0 (+https://github.com/nalbam/nalbam-agent)";
 const FETCH_TIMEOUT_MS = 12_000;
 const JINA_HEADER_MAX_LINES = 10;
 
@@ -68,8 +67,7 @@ export const isPublicAddress = (address: string): boolean => {
   if (isIP(address) === 6) {
     const lower = address.toLowerCase();
     if (lower === "::1" || lower === "::") return false;
-    if (lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd"))
-      return false;
+    if (lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd")) return false;
     if (lower.startsWith("ff")) return false; // multicast
     // IPv4-mapped IPv6 — re-validate the embedded v4.
     if (lower.startsWith("::ffff:")) {
@@ -98,9 +96,7 @@ const validatePublicHttpsUrl = async (raw: string): Promise<URL> => {
   try {
     infos = await lookup(host, { all: true });
   } catch (err) {
-    throw new Error(
-      `DNS resolution failed: ${err instanceof Error ? err.message : "unknown"}`,
-    );
+    throw new Error(`DNS resolution failed: ${err instanceof Error ? err.message : "unknown"}`);
   }
   if (infos.length === 0) throw new Error("DNS resolution returned no addresses");
   for (const info of infos) {
@@ -233,7 +229,9 @@ const extractMarkdownLinks = (
   return filterLinks(matches, base, limit);
 };
 
-const stripHtml = (html: string): { title: string; text: string; links: Array<{ title: string; url: string }> } => {
+const stripHtml = (
+  html: string,
+): { title: string; text: string; links: Array<{ title: string; url: string }> } => {
   // Drop script/style/noscript first so their contents don't bleed into text.
   let cleaned = html.replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   const titleMatch = cleaned.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -241,7 +239,10 @@ const stripHtml = (html: string): { title: string; text: string; links: Array<{ 
 
   const links: Array<{ title: string; url: string }> = [];
   cleaned.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_full, href, inner) => {
-    const text = String(inner).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const text = String(inner)
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
     links.push({ title: text, url: String(href) });
     return "";
   });
@@ -255,7 +256,10 @@ const stripHtml = (html: string): { title: string; text: string; links: Array<{ 
   cleaned = cleaned.replace(/&gt;/gi, ">");
   cleaned = cleaned.replace(/&quot;/gi, '"');
   cleaned = cleaned.replace(/&#39;/gi, "'");
-  const lines = cleaned.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const lines = cleaned
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
   return { title, text: lines.join("\n"), links };
 };
 
