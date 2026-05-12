@@ -5,9 +5,8 @@
  * values, grouped into a dict keyed by tool name and passed straight to
  * `streamText({ tools })`.
  *
- * PR2 ships an empty registry — the agent loop runs without tool calls so
- * we can validate the receiver/streamText/after() end-to-end path. PR3
- * fills this in with Slack/web/image tools (memory excluded by design).
+ * PR3 wires in time / web / search / Slack tools. Image generation tools
+ * (generate_image / edit_image / attach_image_from_url) land in PR4.
  *
  * Each tool's `execute` reads shared per-request state (Slack client,
  * channel, thread, user, settings) via the `ToolContext` passed into the
@@ -16,6 +15,16 @@
  */
 import type { WebClient } from "@slack/web-api";
 import type { Tool } from "ai";
+
+import { getCurrentTimeTool } from "@/lib/slack/tools/time";
+import { fetchWebpageTool } from "@/lib/slack/tools/web";
+import { searchImagesTool, searchWebTool } from "@/lib/slack/tools/search";
+import {
+  fetchThreadHistoryTool,
+  fetchUserProfileTool,
+  readAttachedDocumentTool,
+  readAttachedImagesTool,
+} from "@/lib/slack/tools/slack-tools";
 
 export interface SlackToolEvent {
   channel?: string;
@@ -37,15 +46,15 @@ export interface ToolContext {
 
 export type ToolDict = Record<string, Tool>;
 
-/**
- * Build the tool dict for an agent run. PR2 returns an empty dict so the
- * agent can iterate purely on the LLM (no function calling). PR3 expands
- * this with Slack/web/image/time tools.
- */
 export const buildToolRegistry = (context: ToolContext): ToolDict => {
-  // PR3 will close over `context` to build tools that read from Slack /
-  // call the WebClient / etc. Touching the parameter here avoids an
-  // unused-arg warning while keeping the signature stable for PR3.
-  void context;
-  return {};
+  return {
+    get_current_time: getCurrentTimeTool(),
+    fetch_webpage: fetchWebpageTool(),
+    search_web: searchWebTool(),
+    search_images: searchImagesTool(),
+    read_attached_images: readAttachedImagesTool(context),
+    read_attached_document: readAttachedDocumentTool(context),
+    fetch_user_profile: fetchUserProfileTool(context),
+    fetch_thread_history: fetchThreadHistoryTool(context),
+  };
 };

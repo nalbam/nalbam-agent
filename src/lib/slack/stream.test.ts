@@ -77,8 +77,7 @@ describe("StreamingMessage", () => {
     await s.append("seed ");
     client.chat.update.mockClear();
     client.chat.postMessage.mockClear();
-    const final =
-      "A".repeat(25) + "\n\n" + "B".repeat(25) + "\n\n" + "C".repeat(25);
+    const final = "A".repeat(25) + "\n\n" + "B".repeat(25) + "\n\n" + "C".repeat(25);
     await s.stop(final);
     expect(client.chat.update).toHaveBeenCalledTimes(1);
     // remaining chunks posted as new thread messages

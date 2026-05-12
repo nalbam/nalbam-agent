@@ -28,10 +28,7 @@ describe("parseCsv", () => {
 
 describe("effectiveAllowlist", () => {
   it("falls back to env when app override is undefined", () => {
-    expect(effectiveAllowlist({ appOverride: undefined, envCsv: "C1,C2" })).toEqual([
-      "C1",
-      "C2",
-    ]);
+    expect(effectiveAllowlist({ appOverride: undefined, envCsv: "C1,C2" })).toEqual(["C1", "C2"]);
   });
   it("uses empty app override (meaningful 'allow all')", () => {
     expect(effectiveAllowlist({ appOverride: [], envCsv: "C1,C2" })).toEqual([]);
@@ -73,18 +70,18 @@ describe("evaluateChannelAcl", () => {
   });
   it("app override (empty []) opens up when env is restrictive", () => {
     const app: SlackAppRecord = { ...baseApp, allowedChannelIds: [] };
-    expect(
-      evaluateChannelAcl({ channel: "C9", isDm: false, app, envCsv: "C1" }).allowed,
-    ).toBe(true);
+    expect(evaluateChannelAcl({ channel: "C9", isDm: false, app, envCsv: "C1" }).allowed).toBe(
+      true,
+    );
   });
   it("app override (non-empty) overrides env entirely", () => {
     const app: SlackAppRecord = { ...baseApp, allowedChannelIds: ["CX"] };
-    expect(
-      evaluateChannelAcl({ channel: "C1", isDm: false, app, envCsv: "C1" }).allowed,
-    ).toBe(false);
-    expect(
-      evaluateChannelAcl({ channel: "CX", isDm: false, app, envCsv: "C1" }).allowed,
-    ).toBe(true);
+    expect(evaluateChannelAcl({ channel: "C1", isDm: false, app, envCsv: "C1" }).allowed).toBe(
+      false,
+    );
+    expect(evaluateChannelAcl({ channel: "CX", isDm: false, app, envCsv: "C1" }).allowed).toBe(
+      true,
+    );
   });
 });
 
@@ -118,14 +115,10 @@ describe("effectivePersona", () => {
 
 describe("renderChannelDenyMessage", () => {
   it("substitutes {} with <#CHANNEL>", () => {
-    expect(renderChannelDenyMessage("ask in {} please", "C1")).toBe(
-      "ask in <#C1> please",
-    );
+    expect(renderChannelDenyMessage("ask in {} please", "C1")).toBe("ask in <#C1> please");
   });
   it("returns template as-is when no channel to reference", () => {
-    expect(renderChannelDenyMessage("ask in {} please", undefined)).toBe(
-      "ask in {} please",
-    );
+    expect(renderChannelDenyMessage("ask in {} please", undefined)).toBe("ask in {} please");
   });
   it("empty template returns empty", () => {
     expect(renderChannelDenyMessage("", "C1")).toBe("");

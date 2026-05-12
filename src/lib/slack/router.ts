@@ -17,10 +17,7 @@ import type { WebClient } from "@slack/web-api";
 
 import { logger } from "@/lib/logger";
 import { sanitizeError } from "@/lib/slack/formatter";
-import {
-  handleMessage,
-  type SlackMessageEvent,
-} from "@/lib/slack/handlers/message";
+import { handleMessage, type SlackMessageEvent } from "@/lib/slack/handlers/message";
 
 export interface SlackEventCallback {
   type?: string;

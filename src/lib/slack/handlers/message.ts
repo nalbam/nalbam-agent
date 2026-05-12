@@ -27,10 +27,7 @@ import {
   renderChannelDenyMessage,
 } from "@/lib/slack/acl";
 import { runAgent } from "@/lib/slack/agent";
-import {
-  touchSlackApp,
-  type SlackAppRecord,
-} from "@/lib/slack/app-metadata";
+import { touchSlackApp, type SlackAppRecord } from "@/lib/slack/app-metadata";
 import { loadThreadHistory, saveThreadHistory } from "@/lib/slack/conversation";
 import { isDone, markDone, reserve } from "@/lib/slack/dedup";
 import { sanitizeError, splitMessage } from "@/lib/slack/formatter";

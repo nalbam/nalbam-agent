@@ -9,13 +9,7 @@
  * Tools are passed in as a dict; when empty, we omit the `tools` arg
  * entirely so the LLM doesn't see a stale schema with no callbacks.
  */
-import {
-  stepCountIs,
-  streamText,
-  type LanguageModel,
-  type ModelMessage,
-  type Tool,
-} from "ai";
+import { stepCountIs, streamText, type LanguageModel, type ModelMessage, type Tool } from "ai";
 
 import { logger } from "@/lib/logger";
 import { sanitizeError } from "@/lib/slack/formatter";
@@ -41,10 +35,7 @@ export interface AgentRunResult {
   tokensOut: number;
 }
 
-const toModelMessages = (
-  history: ThreadMessage[],
-  userMessage: string,
-): ModelMessage[] => {
+const toModelMessages = (history: ThreadMessage[], userMessage: string): ModelMessage[] => {
   const out: ModelMessage[] = [];
   for (const h of history) {
     if (h.role === "user" || h.role === "assistant" || h.role === "system") {
