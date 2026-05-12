@@ -39,11 +39,10 @@ export default async function Home() {
           Multi-tenant Slack bot, one Amplify deployment
         </h1>
         <p className="text-muted-foreground mt-4 max-w-3xl text-base leading-7 md:text-lg">
-          A multi-tenant Slack AI agent built on Next.js 16 + Vercel AI SDK + DynamoDB
-          single-table, deployed to AWS Amplify SSR. Per-app secrets live in AWS SSM
-          SecureString; ACL and persona overrides live in DynamoDB. Operators register
-          and manage apps from the web UI under <code>/slack</code> or via{" "}
-          <code>pnpm slack-apps</code>.
+          A multi-tenant Slack AI agent built on Next.js 16 + Vercel AI SDK + DynamoDB single-table,
+          deployed to AWS Amplify SSR. Per-app secrets live in AWS SSM SecureString; ACL and persona
+          overrides live in DynamoDB. Operators register and manage apps from the web UI under{" "}
+          <code>/slack</code> or via <code>pnpm slack-apps</code>.
         </p>
         {user ? (
           <div className="border-border/60 bg-background/60 mt-6 flex flex-wrap items-center gap-4 rounded-2xl border px-5 py-4">
