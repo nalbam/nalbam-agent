@@ -22,10 +22,10 @@ export default function RegisterSlackAppPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">Register Slack app</h1>
         <p className="text-muted-foreground text-sm">
-          The signing secret and bot token are stored as SecureString parameters in AWS
-          SSM. The bot token is verified with <code>auth.test</code> before anything is
-          persisted, and the returned <code>team_id</code> / <code>user_id</code> /{" "}
-          <code>team_name</code> populate the metadata row automatically.
+          The signing secret and bot token are stored as SecureString parameters in AWS SSM. The bot
+          token is verified with <code>auth.test</code> before anything is persisted, and the
+          returned <code>team_id</code> / <code>user_id</code> / <code>team_name</code> populate the
+          metadata row automatically.
         </p>
       </header>
 

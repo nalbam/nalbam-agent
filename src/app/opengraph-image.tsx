@@ -43,7 +43,7 @@ export default async function OgImage() {
           fontWeight: 400,
         }}
       >
-        Production-ready starter
+        Slack AI agent
       </div>
       <div
         style={{
@@ -65,7 +65,7 @@ export default async function OgImage() {
           fontWeight: 400,
         }}
       >
-        Next.js 16 · Better Auth · DynamoDB · Tailwind v4
+        Multi-tenant · Vercel AI SDK · DynamoDB · AWS Amplify SSR
       </div>
     </div>,
     {

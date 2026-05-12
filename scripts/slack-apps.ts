@@ -135,7 +135,9 @@ const cmdList = async (): Promise<void> => {
   }
   for (const a of apps) {
     const label = a.displayName ?? a.teamName ?? a.apiAppId;
-    console.log(`${a.apiAppId}  ${label}  team=${a.teamId ?? "?"}  bot=${a.botUserName ?? "?"}  lastSeen=${formatTime(a.lastSeenAt)}`);
+    console.log(
+      `${a.apiAppId}  ${label}  team=${a.teamId ?? "?"}  bot=${a.botUserName ?? "?"}  lastSeen=${formatTime(a.lastSeenAt)}`,
+    );
   }
 };
 
@@ -317,6 +319,6 @@ const main = async (): Promise<void> => {
 };
 
 main().catch((err) => {
-  console.error(`fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+  console.error(`fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
   process.exit(1);
 });

@@ -14,10 +14,7 @@ import type { WebClient } from "@slack/web-api";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { effectiveAllowlist } from "@/lib/slack/acl";
-import {
-  touchSlackApp,
-  type SlackAppRecord,
-} from "@/lib/slack/app-metadata";
+import { touchSlackApp, type SlackAppRecord } from "@/lib/slack/app-metadata";
 import { isDone, markDone, reserve } from "@/lib/slack/dedup";
 import { sanitizeError } from "@/lib/slack/formatter";
 
@@ -120,9 +117,7 @@ const handleXDelete: ReactionHandler = async ({ client, apiAppId, event, app }) 
     appOverride: app?.allowedUserIds,
     envCsv: env.ALLOWED_USER_IDS,
   });
-  const allowed =
-    (originalAsker && reactor === originalAsker) ||
-    effectiveUsers.includes(reactor);
+  const allowed = (originalAsker && reactor === originalAsker) || effectiveUsers.includes(reactor);
   if (!allowed) {
     logger.info("slack.reaction.unauthorized", {
       apiAppId,

@@ -185,10 +185,7 @@ export const deleteSlackCredentials = async (
   const { client, prefix } = await resolveDeps(deps);
   const signingName = `${prefix}/${apiAppId}/signing_secret`;
   const tokenName = `${prefix}/${apiAppId}/bot_token`;
-  await Promise.all([
-    client.deleteParameter(signingName),
-    client.deleteParameter(tokenName),
-  ]);
+  await Promise.all([client.deleteParameter(signingName), client.deleteParameter(tokenName)]);
   invalidateSlackCredentials(apiAppId);
 };
 

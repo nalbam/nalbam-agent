@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     template: `%s · ${clientEnv.NEXT_PUBLIC_APP_NAME}`,
   },
   description:
-    "Node.js 22 + Next.js 16 + Better Auth + React 19 + TypeScript + DynamoDB + Tailwind CSS starter",
+    "Multi-tenant Slack AI agent on Next.js 16 + Better Auth + DynamoDB + Vercel AI SDK, deployed to AWS Amplify SSR.",
   applicationName: clientEnv.NEXT_PUBLIC_APP_NAME,
 };
 

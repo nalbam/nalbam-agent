@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: clientEnv.NEXT_PUBLIC_APP_NAME,
     short_name: clientEnv.NEXT_PUBLIC_APP_NAME,
     description:
-      "Next.js 16 + Better Auth + DynamoDB + Tailwind starter. Production-ready scaffolding.",
+      "Multi-tenant Slack AI agent on Next.js 16 + Better Auth + DynamoDB. Multi-tenant, agent-loop, deployed on AWS Amplify SSR.",
     start_url: "/",
     display: "standalone",
     background_color: "#020617",

@@ -23,8 +23,8 @@ export default async function SlackAppsPage() {
         <div>
           <h1 className="text-2xl font-bold">Slack apps</h1>
           <p className="text-muted-foreground text-sm">
-            Per-tenant Slack apps wired into this deployment. Secrets live in AWS SSM
-            Parameter Store; metadata and ACL / persona overrides live in DynamoDB.
+            Per-tenant Slack apps wired into this deployment. Secrets live in AWS SSM Parameter
+            Store; metadata and ACL / persona overrides live in DynamoDB.
           </p>
         </div>
         <Button asChild>
@@ -47,22 +47,15 @@ export default async function SlackAppsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-4">
-                    <Link
-                      href={`/slack/${app.apiAppId}`}
-                      className="hover:underline"
-                    >
+                    <Link href={`/slack/${app.apiAppId}`} className="hover:underline">
                       {app.displayName ?? app.teamName ?? app.apiAppId}
                     </Link>
-                    <code className="text-muted-foreground font-mono text-xs">
-                      {app.apiAppId}
-                    </code>
+                    <code className="text-muted-foreground font-mono text-xs">{app.apiAppId}</code>
                   </CardTitle>
                   <CardDescription className="space-x-3">
                     {app.teamName ? <span>team: {app.teamName}</span> : null}
                     {app.botUserName ? <span>bot: @{app.botUserName}</span> : null}
-                    {app.teamId ? (
-                      <span className="font-mono text-xs">{app.teamId}</span>
-                    ) : null}
+                    {app.teamId ? <span className="font-mono text-xs">{app.teamId}</span> : null}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="text-muted-foreground space-y-1 text-sm">

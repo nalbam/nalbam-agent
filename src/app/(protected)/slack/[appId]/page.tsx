@@ -36,9 +36,7 @@ export default async function SlackAppDetailPage({ params }: PageProps) {
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <header className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">
-            {app.displayName ?? app.teamName ?? app.apiAppId}
-          </h1>
+          <h1 className="text-2xl font-bold">{app.displayName ?? app.teamName ?? app.apiAppId}</h1>
           <p className="text-muted-foreground space-x-2 text-sm">
             <code className="font-mono">{app.apiAppId}</code>
             {app.teamName ? <span>· {app.teamName}</span> : null}
@@ -79,8 +77,8 @@ export default async function SlackAppDetailPage({ params }: PageProps) {
         <CardHeader>
           <CardTitle>Channel allowlist</CardTitle>
           <CardDescription>
-            Empty list = explicit allow-all (overrides env). Removing the override falls back
-            to <code>ALLOWED_CHANNEL_IDS</code>.
+            Empty list = explicit allow-all (overrides env). Removing the override falls back to{" "}
+            <code>ALLOWED_CHANNEL_IDS</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -177,7 +175,7 @@ export default async function SlackAppDetailPage({ params }: PageProps) {
                 {app.personaMessage === undefined
                   ? "(env fallback)"
                   : app.personaMessage === ""
-                    ? "\"\" (no persona)"
+                    ? '"" (no persona)'
                     : app.personaMessage}
               </code>
             </p>
@@ -199,8 +197,8 @@ export default async function SlackAppDetailPage({ params }: PageProps) {
         <CardHeader>
           <CardTitle className="text-destructive">Danger zone</CardTitle>
           <CardDescription>
-            Removes the app metadata row from DynamoDB AND deletes both SSM
-            SecureString parameters. Type the App ID to confirm.
+            Removes the app metadata row from DynamoDB AND deletes both SSM SecureString parameters.
+            Type the App ID to confirm.
           </CardDescription>
         </CardHeader>
         <CardContent>

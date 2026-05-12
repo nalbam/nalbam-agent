@@ -116,14 +116,10 @@ export const registerSlackAppAction = async (
   return { ok: true, apiAppId };
 };
 
-export const updateSlackAppAllowlistAction = async (
-  formData: FormData,
-): Promise<void> => {
+export const updateSlackAppAllowlistAction = async (formData: FormData): Promise<void> => {
   await requireSession();
   const apiAppId = String(formData.get("apiAppId") ?? "").trim();
-  const attr = String(formData.get("attr") ?? "") as
-    | "allowedChannelIds"
-    | "allowedUserIds";
+  const attr = String(formData.get("attr") ?? "") as "allowedChannelIds" | "allowedUserIds";
   const action = String(formData.get("action") ?? ""); // "set" | "unset"
   const raw = String(formData.get("values") ?? "");
   if (!apiAppId) throw new Error("apiAppId required");
@@ -138,9 +134,7 @@ export const updateSlackAppAllowlistAction = async (
   revalidatePath(`/slack/${apiAppId}`);
 };
 
-export const updateSlackAppPersonaAction = async (
-  formData: FormData,
-): Promise<void> => {
+export const updateSlackAppPersonaAction = async (formData: FormData): Promise<void> => {
   await requireSession();
   const apiAppId = String(formData.get("apiAppId") ?? "").trim();
   const action = String(formData.get("action") ?? ""); // "set" | "unset"
@@ -154,9 +148,7 @@ export const updateSlackAppPersonaAction = async (
   revalidatePath(`/slack/${apiAppId}`);
 };
 
-export const updateSlackAppDisplayNameAction = async (
-  formData: FormData,
-): Promise<void> => {
+export const updateSlackAppDisplayNameAction = async (formData: FormData): Promise<void> => {
   await requireSession();
   const apiAppId = String(formData.get("apiAppId") ?? "").trim();
   const action = String(formData.get("action") ?? "");
@@ -179,10 +171,7 @@ export const deleteSlackAppAction = async (formData: FormData): Promise<void> =>
   if (confirm !== apiAppId) {
     throw new Error("Type the apiAppId to confirm deletion");
   }
-  await Promise.allSettled([
-    deleteSlackCredentials(apiAppId),
-    deleteSlackApp(apiAppId),
-  ]);
+  await Promise.allSettled([deleteSlackCredentials(apiAppId), deleteSlackApp(apiAppId)]);
   invalidateSlackCredentials(apiAppId);
   logger.info("slack.app.deleted", { apiAppId });
   revalidatePath("/slack");
