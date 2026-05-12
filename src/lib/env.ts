@@ -1,5 +1,35 @@
 import { z } from "zod";
 
+const positiveInt = (min: number, fallback: number) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (!v) return fallback;
+      const n = Number.parseInt(v, 10);
+      if (Number.isNaN(n) || n < min) return fallback;
+      return n;
+    });
+
+const httpsUrlOr = (fallback: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      const raw = v?.trim();
+      if (!raw) return fallback;
+      if (!raw.startsWith("https://")) return fallback;
+      return raw;
+    });
+
+const trimmedOptional = z
+  .string()
+  .optional()
+  .transform((v) => {
+    const t = v?.trim();
+    return t ? t : undefined;
+  });
+
 const serverSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
@@ -30,6 +60,58 @@ const serverSchema = z.object({
   AUTH_GOOGLE_SECRET: z.string().optional(),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
+
+  // ── Slack bot multi-tenant secrets are stored in SSM Parameter Store at
+  // `{SLACK_SSM_PREFIX}/{api_app_id}/signing_secret` and `.../bot_token`.
+  // Metadata (team_id, ACL, persona) lives in DynamoDB. See src/lib/slack/*.
+  SLACK_SSM_PREFIX: z.string().default("/nalbam-agent/slack/apps"),
+  SLACK_SSM_CACHE_TTL_SECONDS: positiveInt(10, 300),
+
+  // ── LLM / agent
+  LLM_PROVIDER: z.enum(["openai", "bedrock"]).default("openai"),
+  LLM_MODEL: z.string().default("gpt-4o-mini"),
+  IMAGE_PROVIDER: z.enum(["openai", "bedrock"]).optional(),
+  IMAGE_MODEL: z.string().default("gpt-image-1"),
+  OPENAI_API_KEY: trimmedOptional,
+  TAVILY_API_KEY: trimmedOptional,
+  AGENT_MAX_STEPS: positiveInt(2, 6),
+  MAX_OUTPUT_TOKENS: positiveInt(256, 4096),
+  RESPONSE_LANGUAGE: z.enum(["ko", "en"]).default("ko"),
+  SYSTEM_MESSAGE: trimmedOptional,
+  PERSONA_MESSAGE: trimmedOptional,
+
+  // ── Slack rendering / behavior
+  BOT_CURSOR: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || ":robot_face:"),
+  MAX_LEN_SLACK: positiveInt(500, 3000),
+  MAX_HISTORY_CHARS: positiveInt(500, 4000),
+  ALLOWED_CHANNEL_IDS: trimmedOptional,
+  ALLOWED_CHANNEL_MESSAGE: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || "질문은 {} 채널을 이용해 주세요~"),
+  ALLOWED_USER_IDS: trimmedOptional,
+  ALLOWED_USER_MESSAGE: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || "허용된 유저만 응답합니다."),
+  MAX_THROTTLE_COUNT: positiveInt(1, 100),
+
+  // ── document / web extraction
+  DEFAULT_TIMEZONE: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || "Asia/Seoul"),
+  MAX_DOC_CHARS: positiveInt(1000, 20_000),
+  MAX_DOC_PAGES: positiveInt(1, 50),
+  MAX_DOC_BYTES: positiveInt(64 * 1024, 25 * 1024 * 1024),
+  MAX_WEB_CHARS: positiveInt(500, 8000),
+  MAX_WEB_BYTES: positiveInt(64 * 1024, 2 * 1024 * 1024),
+  MAX_WEB_LINKS: positiveInt(0, 20),
+  MAX_IMAGE_BYTES: positiveInt(64 * 1024, 10 * 1024 * 1024),
+  JINA_READER_BASE: httpsUrlOr("https://r.jina.ai"),
 });
 
 const clientSchema = z.object({
@@ -97,6 +179,36 @@ export const getServerEnv = (): ServerEnv => {
     AUTH_GOOGLE_ID: process.env.AUTH_GOOGLE_ID,
     AUTH_GOOGLE_SECRET: process.env.AUTH_GOOGLE_SECRET,
     LOG_LEVEL: process.env.LOG_LEVEL,
+    SLACK_SSM_PREFIX: process.env.SLACK_SSM_PREFIX,
+    SLACK_SSM_CACHE_TTL_SECONDS: process.env.SLACK_SSM_CACHE_TTL_SECONDS,
+    LLM_PROVIDER: process.env.LLM_PROVIDER,
+    LLM_MODEL: process.env.LLM_MODEL,
+    IMAGE_PROVIDER: process.env.IMAGE_PROVIDER,
+    IMAGE_MODEL: process.env.IMAGE_MODEL,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+    AGENT_MAX_STEPS: process.env.AGENT_MAX_STEPS,
+    MAX_OUTPUT_TOKENS: process.env.MAX_OUTPUT_TOKENS,
+    RESPONSE_LANGUAGE: process.env.RESPONSE_LANGUAGE,
+    SYSTEM_MESSAGE: process.env.SYSTEM_MESSAGE,
+    PERSONA_MESSAGE: process.env.PERSONA_MESSAGE,
+    BOT_CURSOR: process.env.BOT_CURSOR,
+    MAX_LEN_SLACK: process.env.MAX_LEN_SLACK,
+    MAX_HISTORY_CHARS: process.env.MAX_HISTORY_CHARS,
+    ALLOWED_CHANNEL_IDS: process.env.ALLOWED_CHANNEL_IDS,
+    ALLOWED_CHANNEL_MESSAGE: process.env.ALLOWED_CHANNEL_MESSAGE,
+    ALLOWED_USER_IDS: process.env.ALLOWED_USER_IDS,
+    ALLOWED_USER_MESSAGE: process.env.ALLOWED_USER_MESSAGE,
+    MAX_THROTTLE_COUNT: process.env.MAX_THROTTLE_COUNT,
+    DEFAULT_TIMEZONE: process.env.DEFAULT_TIMEZONE,
+    MAX_DOC_CHARS: process.env.MAX_DOC_CHARS,
+    MAX_DOC_PAGES: process.env.MAX_DOC_PAGES,
+    MAX_DOC_BYTES: process.env.MAX_DOC_BYTES,
+    MAX_WEB_CHARS: process.env.MAX_WEB_CHARS,
+    MAX_WEB_BYTES: process.env.MAX_WEB_BYTES,
+    MAX_WEB_LINKS: process.env.MAX_WEB_LINKS,
+    MAX_IMAGE_BYTES: process.env.MAX_IMAGE_BYTES,
+    JINA_READER_BASE: process.env.JINA_READER_BASE,
   });
   if (!result.success) {
     return formatError("server", result.error);

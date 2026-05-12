@@ -16,3 +16,7 @@ process.env.NEXT_PUBLIC_BETTER_AUTH_URL =
   process.env.NEXT_PUBLIC_BETTER_AUTH_URL ?? "http://localhost:3000";
 process.env.NEXT_PUBLIC_APP_NAME =
   process.env.NEXT_PUBLIC_APP_NAME ?? "Next.js Tailwind Starter (test)";
+// Slack bot defaults — keep tests deterministic without .env.local.
+process.env.SLACK_SSM_PREFIX = process.env.SLACK_SSM_PREFIX ?? "/nalbam-agent-test/slack/apps";
+process.env.LLM_PROVIDER = process.env.LLM_PROVIDER ?? "openai";
+process.env.LLM_MODEL = process.env.LLM_MODEL ?? "gpt-4o-mini";

@@ -77,6 +77,11 @@ export const sanitizeKeyValue = (value: string): string => {
   return value;
 };
 
+// Slack identifiers (api_app_id, channel/user IDs, client_msg_id) are not
+// guaranteed to match the strict alphanumeric `validateId` pattern (e.g.
+// thread_ts contains a dot, client_msg_id may contain hyphens but Slack also
+// emits UUIDs). `sanitizeKeyValue` is the right gate: it blocks control chars
+// and 1024-char overruns without forbidding `.` or `:`.
 export const keys = {
   user: (userId: string) => ({
     PK: `USER#${validateId(userId)}`,
@@ -90,12 +95,32 @@ export const keys = {
     PK: `USER#${validateId(userId)}`,
     SK: `PROJECT#${validateId(projectId)}`,
   }),
+  slackApp: (apiAppId: string) => ({
+    PK: `SLACK_APP#${sanitizeKeyValue(apiAppId)}`,
+    SK: "META",
+  }),
+  slackDedup: (apiAppId: string, eventKey: string) => ({
+    PK: `SLACK_DEDUP#${sanitizeKeyValue(apiAppId)}#${sanitizeKeyValue(eventKey)}`,
+    SK: "META",
+  }),
+  slackDone: (apiAppId: string, eventKey: string) => ({
+    PK: `SLACK_DONE#${sanitizeKeyValue(apiAppId)}#${sanitizeKeyValue(eventKey)}`,
+    SK: "META",
+  }),
+  slackThread: (apiAppId: string, threadTs: string) => ({
+    PK: `SLACK_THREAD#${sanitizeKeyValue(apiAppId)}#${sanitizeKeyValue(threadTs)}`,
+    SK: "META",
+  }),
 };
 
 export const gsi1 = {
   byEmail: (email: string) => ({
     GSI1PK: `EMAIL#${sanitizeKeyValue(email.toLowerCase())}`,
     GSI1SK: "USER",
+  }),
+  bySlackTeam: (teamId: string) => ({
+    GSI1PK: `SLACK_APP:TEAM#${sanitizeKeyValue(teamId)}`,
+    GSI1SK: "SLACK_APP",
   }),
 };
 
@@ -123,4 +148,38 @@ export type SingleTableItem =
   | ({ entity: "USER_PROJECT" } & ReturnType<typeof keys.userProject> & {
         role: "owner" | "member";
         joinedAt: string;
+      })
+  | ({ entity: "SLACK_APP" } & ReturnType<typeof keys.slackApp> & {
+        apiAppId: string;
+        teamId?: string;
+        teamName?: string;
+        teamDomain?: string;
+        botUserId?: string;
+        botUserName?: string;
+        displayName?: string;
+        allowedChannelIds?: string[];
+        allowedUserIds?: string[];
+        personaMessage?: string;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        GSI1PK?: string;
+        GSI1SK?: string;
+      })
+  | ({ entity: "SLACK_DEDUP" } & ReturnType<typeof keys.slackDedup> & {
+        apiAppId: string;
+        eventKey: string;
+        user: string;
+        ttl: number;
+      })
+  | ({ entity: "SLACK_DONE" } & ReturnType<typeof keys.slackDone> & {
+        apiAppId: string;
+        eventKey: string;
+        user: string;
+        ttl: number;
+      })
+  | ({ entity: "SLACK_THREAD" } & ReturnType<typeof keys.slackThread> & {
+        apiAppId: string;
+        threadTs: string;
+        messages: string;
+        ttl: number;
       });
