@@ -80,9 +80,7 @@ vi.mock("@/lib/slack/stream", () => {
     stop = vi.fn(async () => {});
     hasStarted = (): boolean => this.started;
     constructor() {
-      streamingMessageInstances.push(
-        this as unknown as (typeof streamingMessageInstances)[number],
-      );
+      streamingMessageInstances.push(this as unknown as (typeof streamingMessageInstances)[number]);
     }
   }
   return { StreamingMessage };
