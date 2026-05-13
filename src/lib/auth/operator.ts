@@ -34,7 +34,9 @@ export interface OperatorCheckResult {
   unrestricted: boolean;
 }
 
-export const isOperatorAllowed = (user: SessionUserShape | null | undefined): OperatorCheckResult => {
+export const isOperatorAllowed = (
+  user: SessionUserShape | null | undefined,
+): OperatorCheckResult => {
   const allowed = parseAllowedEmails(getServerEnv().OPERATOR_ALLOWED_EMAILS);
   if (allowed.length === 0) {
     logger.warn("slack.operator.allowlist_empty", { userId: user?.id });

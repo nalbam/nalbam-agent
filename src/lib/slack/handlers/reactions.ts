@@ -18,11 +18,7 @@ import type { WebClient } from "@slack/web-api";
 import { getServerEnv } from "@/lib/env";
 import { logger as defaultLogger, type Logger } from "@/lib/logger";
 import { effectiveAllowlist } from "@/lib/slack/acl";
-import {
-  getSlackApp,
-  touchSlackApp,
-  type SlackAppRecord,
-} from "@/lib/slack/app-metadata";
+import { getSlackApp, touchSlackApp, type SlackAppRecord } from "@/lib/slack/app-metadata";
 import { isDone, markDone, reserve } from "@/lib/slack/dedup";
 import { sanitizeError } from "@/lib/slack/formatter";
 import { withSlackRetry } from "@/lib/slack/with-retry";

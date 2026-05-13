@@ -30,9 +30,7 @@ export interface SlackEventCallback {
   type?: string;
   api_app_id?: string;
   team_id?: string;
-  event?:
-    | (SlackMessageEvent & { type?: string })
-    | (SlackReactionEvent & { type?: string });
+  event?: (SlackMessageEvent & { type?: string }) | (SlackReactionEvent & { type?: string });
   challenge?: string;
 }
 
@@ -49,8 +47,7 @@ const isReactionEvent = (
 
 const isMessageLikeEvent = (
   e: NonNullable<SlackEventCallback["event"]>,
-): e is SlackMessageEvent & { type: string } =>
-  e.type === "app_mention" || e.type === "message";
+): e is SlackMessageEvent & { type: string } => e.type === "app_mention" || e.type === "message";
 
 export const dispatchEvent = async (input: DispatchInput): Promise<void> => {
   const { client, apiAppId, payload } = input;

@@ -4,6 +4,56 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Improved — audit follow-up
+
+- **Agent forced-compose** — when `stepCountIs(N)` halts on a tool-calls
+  turn without final text, the agent now runs one extra tool-less
+  `generateText` follow-up so the user gets an answer instead of the
+  "(응답을 생성하지 못했습니다)" fallback. Mirrors the original
+  `_compose_without_tools`.
+- **`request_id` + `logger.child`** — every request now carries a
+  per-invocation UUID through router → handlers → agent → tools so
+  CloudWatch can group a single request's events in multi-tenant
+  deployments.
+- **Thread history OCC** — `loadThreadHistory` returns a row version,
+  `saveThreadHistory` enforces it via `ConditionExpression`. Concurrent
+  mentions in the same thread now lose loudly (`slack.conversation.race_lost`)
+  instead of silently dropping a turn via last-write-wins.
+- **`touchSlackApp` after dedup** — retries/duplicates no longer bump
+  `lastSeenAt`. Read the existing row before dedup (for `botUserId`),
+  defer the write until dedup passes.
+- **`slack.agent.start` log uses display name** — `getUserName` resolves
+  the Slack handle before the start event so CloudWatch reads more
+  naturally than raw `Uxxxx`.
+- **`assistant.threads.setStatus`** — typing-style indicator while the
+  agent works, before the first stream chunk arrives. Graceful no-op on
+  workspaces without the assistant API.
+- **`read_attached_images` vision calls parallel** — `Promise.all` over
+  the candidates instead of serial `await`; limit=3 is now ~3× faster on
+  the multimodal LLM round-trips.
+- **`MAX_THROTTLE_COUNT` enforced** — Upstash/Valkey INCR counter with
+  TTL fallback. No-op when neither KV is configured.
+- **Reactions handler retries** — `conversations.history` and
+  `conversations.replies` now go through the shared `withSlackRetry`
+  helper. `withSlackRetry` was promoted from `tools/slack-tools.ts` to
+  `src/lib/slack/with-retry.ts` so it can be reused across modules.
+- **`search.ts` `redirect: "manual"`** — defense-in-depth consistency
+  with the other tool fetches; the search hosts don't redirect today
+  but a future change wouldn't bypass the SSRF posture.
+- **`edit_image` actually edits** — direct OpenAI `/v1/images/edits`
+  multipart call (`@ai-sdk/openai` does not expose an edit primitive).
+  Replaces the prior stub. Bedrock edit remains unsupported and returns
+  a structured error so the agent pivots to `generate_image`.
+- **Operator UI allowlist** — `OPERATOR_ALLOWED_EMAILS` env (CSV) gates
+  `/slack/*` at the layout level AND at every server action's
+  `requireSession()` as defense-in-depth. Unset = open mode with a
+  `slack.operator.allowlist_empty` warning per request.
+- **Handler integration tests** — 14 new tests covering `handleMessage`
+  (dedup short-circuit, empty-text bail, dedup-then-touch order, channel
+  block, user block, throttle reject, throttle release on agent throw)
+  and `handleReaction` (`:x:` asker / item-user / unauthorized / dedup /
+  ALLOWED_USER_IDS).
+
 ### Added — Slack AI agent migration
 
 Ported `lambda-gurumi-bot` (Python + Serverless Framework + AWS Lambda) onto this Next.js 16 + Better Auth + DynamoDB codebase, deployed to AWS Amplify Hosting (SSR). Five sequential PRs:
@@ -42,10 +92,8 @@ Test footprint: 152 unit tests across 17 files. `pnpm lint`, `pnpm typecheck`, `
 ### Known limitations
 
 - **`after()` on Amplify SSR is unverified in-the-wild.** First deploy must confirm via CloudWatch that `slack.agent.start` → `slack.agent.done` both appear after the HTTP 200 returns. Fallback paths (Upstash QStash / SQS / self-invoke) are sketched in `docs/slack-bot.md`.
-- Bedrock image generation (Nova Canvas / Titan Image) is not wired — OpenAI-only for now.
-- `edit_image` is stubbed.
+- Bedrock image generation / edit (Nova Canvas / Titan Image) is not wired — OpenAI-only for now. Both `generate_image` and `edit_image` surface an explicit error when `IMAGE_PROVIDER=bedrock`.
 - User memory tools (`remember` / `forget`) from the Python original are intentionally not migrated; the `mem:{user_id}` key prefix is reserved.
-- `MAX_THROTTLE_COUNT` env is parsed but not yet enforced.
 
 ## [0.1.0] — Starter foundation
 

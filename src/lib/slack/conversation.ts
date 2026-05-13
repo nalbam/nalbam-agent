@@ -138,11 +138,9 @@ export const saveThreadHistory = async (
   const cmd = new PutCommand({
     TableName: getTableName(),
     Item: item,
-    ConditionExpression:
-      expectedVersion === 0 ? "attribute_not_exists(#v)" : "#v = :expected",
+    ConditionExpression: expectedVersion === 0 ? "attribute_not_exists(#v)" : "#v = :expected",
     ExpressionAttributeNames: { "#v": "version" },
-    ExpressionAttributeValues:
-      expectedVersion === 0 ? undefined : { ":expected": expectedVersion },
+    ExpressionAttributeValues: expectedVersion === 0 ? undefined : { ":expected": expectedVersion },
   });
 
   try {

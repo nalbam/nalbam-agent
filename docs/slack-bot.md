@@ -145,14 +145,20 @@ If you see `slack.route.*` but no `slack.agent.*` logs **and** no reply, `after(
 - **DynamoDB TTL** sweeps `SLACK_DEDUP#…` (5 min) and `SLACK_THREAD#…` (1 h). `SLACK_APP#…` and `SLACK_DONE#…` (1 h) too — operator UI and CLI commands write fresh rows on each interaction.
 - **Multi-app warm-container caching**: `getSlackCredentials` caches per `api_app_id` for 5 min by default. `invalidateSlackCredentials` is called whenever the web UI / CLI updates secrets so rotations take effect immediately on the container that handled the change. Other warm containers pick up the change within the TTL window.
 - **`:x:` reaction**: deletes a bot reply when the reactor is the original thread asker OR appears in the effective `ALLOWED_USER_IDS`. Original-asker lookup uses `conversations.history(latest=msg_ts, inclusive=true, limit=1)` to find the parent ts, then `conversations.replies(ts=parent_ts, limit=1)` for the asker — the original Python comment about Slack's `oldest==latest` quirk still applies.
-- **`edit_image`** is intentionally stubbed in this iteration (returns `{ error: "not implemented yet …" }`). The agent treats the structured error as a recoverable signal and pivots to `generate_image` with a descriptive prompt.
+- **`edit_image`** calls OpenAI's `/v1/images/edits` multipart endpoint directly (the `@ai-sdk/openai` provider doesn't expose an edit primitive yet). When `IMAGE_PROVIDER=bedrock`, the tool surfaces a structured "unsupported" error so the agent can pivot to `generate_image` or a text reply.
 
 ## Known limitations
 
-- Image generation is OpenAI-only. Bedrock image generation (Nova Canvas / Titan Image) needs a follow-up PR that either uses the AWS SDK directly or waits for a stable ai-sdk wrapper.
-- `edit_image` is a stub (see above).
+- Image generation + edit are OpenAI-only. Bedrock (Nova Canvas / Titan Image) needs a follow-up PR that either uses the AWS SDK directly or waits for a stable ai-sdk wrapper. Both tools surface `provider 'bedrock' not supported yet` when `IMAGE_PROVIDER=bedrock`.
 - User memory (`remember` / `forget` tools from the original Python bot) is not migrated — the `mem:{user_id}` prefix is intentionally reserved for a future PR.
-- Throttle / per-user concurrent-request counting is not enforced in this port (`MAX_THROTTLE_COUNT` env is read but not currently checked). Add a GSI-based active counter when the deployment starts seeing abuse.
+
+## Operator allowlist
+
+The `/slack` web UI and `pnpm slack-apps` CLI gate on `OPERATOR_ALLOWED_EMAILS` (CSV). When unset the UI is open to any authenticated user (a `slack.operator.allowlist_empty` warning is logged per request). For production, populate this env with the email addresses you want to allow.
+
+## Throttle
+
+`MAX_THROTTLE_COUNT` (default 100) is enforced as a per-user concurrent-active-requests counter via Upstash Redis REST (when configured) or local Valkey via `REDIS_URL`. The counter has a 10-minute TTL fallback so a release that gets dropped (e.g. Lambda timeout mid-handler) doesn't leak the slot forever. No KV configured = throttle disabled (always allowed).
 
 ## Related docs
 

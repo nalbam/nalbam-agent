@@ -8,11 +8,7 @@ import { getSession } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
-export default async function SlackLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function SlackLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session?.user) {
     redirect("/login?redirect=/slack");
@@ -25,9 +21,8 @@ export default async function SlackLayout({
           <CardHeader>
             <CardTitle>Operator access required</CardTitle>
             <CardDescription>
-              Your account ({session.user.email ?? "unknown"}) is not on the operator
-              allowlist. Ask an administrator to add it to{" "}
-              <code>OPERATOR_ALLOWED_EMAILS</code>.
+              Your account ({session.user.email ?? "unknown"}) is not on the operator allowlist. Ask
+              an administrator to add it to <code>OPERATOR_ALLOWED_EMAILS</code>.
             </CardDescription>
           </CardHeader>
           <CardContent>

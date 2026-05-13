@@ -29,11 +29,7 @@ import {
   renderChannelDenyMessage,
 } from "@/lib/slack/acl";
 import { runAgent } from "@/lib/slack/agent";
-import {
-  getSlackApp,
-  touchSlackApp,
-  type SlackAppRecord,
-} from "@/lib/slack/app-metadata";
+import { getSlackApp, touchSlackApp, type SlackAppRecord } from "@/lib/slack/app-metadata";
 import { checkAndIncrementThrottle } from "@/lib/slack/throttle";
 import { loadThreadHistory, saveThreadHistory } from "@/lib/slack/conversation";
 import { isDone, markDone, reserve } from "@/lib/slack/dedup";
@@ -264,12 +260,16 @@ export const handleMessage = async (input: HandleMessageInput): Promise<void> =>
     // chunk — until then this is the only signal the user has. Best-effort:
     // workspaces without the assistant API just see this no-op.
     if (threadTs) {
-      await setThreadStatus(client, channel, threadTs, `${THINKING_STATUS[lang]} ${env.BOT_CURSOR}`, log);
+      await setThreadStatus(
+        client,
+        channel,
+        threadTs,
+        `${THINKING_STATUS[lang]} ${env.BOT_CURSOR}`,
+        log,
+      );
     }
 
-    const userDisplay = user
-      ? await getUserName(client, user).catch(() => user)
-      : "";
+    const userDisplay = user ? await getUserName(client, user).catch(() => user) : "";
     log.info("slack.agent.start", { apiAppId, isDm, user: userDisplay || user });
 
     let agentResult;
