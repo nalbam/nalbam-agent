@@ -22,7 +22,10 @@ const fetchWithDeadline = async (url: string, init: RequestInit): Promise<Respon
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
+    // `redirect: "manual"` keeps us pinned to the known search hosts even if
+    // they ever start issuing 3xx — consistent with other tool fetches and
+    // defense-in-depth against any future open-redirect on the API.
+    return await fetch(url, { ...init, redirect: "manual", signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
   }

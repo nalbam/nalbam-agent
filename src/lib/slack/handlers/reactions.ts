@@ -8,15 +8,24 @@
  *
  * Adding another reaction is a one-line dispatch table entry plus a new
  * `_handle*` function.
+ *
+ * Both `conversations.history` and `conversations.replies` calls go
+ * through `withSlackRetry` so Slack `ratelimited` responses are absorbed
+ * with exponential backoff.
  */
 import type { WebClient } from "@slack/web-api";
 
 import { getServerEnv } from "@/lib/env";
-import { logger } from "@/lib/logger";
+import { logger as defaultLogger, type Logger } from "@/lib/logger";
 import { effectiveAllowlist } from "@/lib/slack/acl";
-import { touchSlackApp, type SlackAppRecord } from "@/lib/slack/app-metadata";
+import {
+  getSlackApp,
+  touchSlackApp,
+  type SlackAppRecord,
+} from "@/lib/slack/app-metadata";
 import { isDone, markDone, reserve } from "@/lib/slack/dedup";
 import { sanitizeError } from "@/lib/slack/formatter";
+import { withSlackRetry } from "@/lib/slack/with-retry";
 
 export interface SlackReactionEvent {
   type?: string;
@@ -36,6 +45,7 @@ export interface HandleReactionInput {
   client: WebClient;
   apiAppId: string;
   event: SlackReactionEvent;
+  logger?: Logger;
 }
 
 type ReactionHandler = (input: {
@@ -43,9 +53,10 @@ type ReactionHandler = (input: {
   apiAppId: string;
   event: SlackReactionEvent;
   app: SlackAppRecord | null;
+  logger: Logger;
 }) => Promise<void>;
 
-const handleXDelete: ReactionHandler = async ({ client, apiAppId, event, app }) => {
+const handleXDelete: ReactionHandler = async ({ client, apiAppId, event, app, logger }) => {
   const env = getServerEnv();
   const channel = event.item?.channel;
   const messageTs = event.item?.ts;
@@ -77,12 +88,17 @@ const handleXDelete: ReactionHandler = async ({ client, apiAppId, event, app }) 
   let originalAsker = "";
   let parentTs = "";
   try {
-    const hist = await client.conversations.history({
-      channel,
-      latest: messageTs,
-      inclusive: true,
-      limit: 1,
-    });
+    const hist = await withSlackRetry(
+      () =>
+        client.conversations.history({
+          channel,
+          latest: messageTs,
+          inclusive: true,
+          limit: 1,
+        }),
+      "conversations.history",
+      { logger },
+    );
     const msgs = (hist.messages ?? []) as Array<{ ts?: string; thread_ts?: string }>;
     if (msgs.length > 0) {
       const botMsg = msgs[0]!;
@@ -96,11 +112,16 @@ const handleXDelete: ReactionHandler = async ({ client, apiAppId, event, app }) 
   }
   if (parentTs && parentTs !== messageTs) {
     try {
-      const replies = await client.conversations.replies({
-        channel,
-        ts: parentTs,
-        limit: 1,
-      });
+      const replies = await withSlackRetry(
+        () =>
+          client.conversations.replies({
+            channel,
+            ts: parentTs,
+            limit: 1,
+          }),
+        "conversations.replies",
+        { logger },
+      );
       const msgs = (replies.messages ?? []) as Array<{ user?: string }>;
       if (msgs.length > 0) {
         originalAsker = msgs[0]!.user ?? "";
@@ -155,6 +176,12 @@ export const isHandledReaction = (reaction: string | undefined): boolean =>
 
 export const handleReaction = async (input: HandleReactionInput): Promise<void> => {
   const { client, apiAppId, event } = input;
+  const log = (input.logger ?? defaultLogger).child({
+    component: "slack.reaction",
+    reaction: event.reaction,
+    channel: event.item?.channel,
+    user: event.user,
+  });
   if (event.item?.type !== "message") return;
   const reaction = event.reaction ?? "";
   const handler = REACTION_HANDLERS[reaction];
@@ -170,39 +197,37 @@ export const handleReaction = async (input: HandleReactionInput): Promise<void> 
   const dedupKey = `reaction:${event.event_ts ?? messageTs}:${reactor}`;
   try {
     if (await isDone(apiAppId, dedupKey)) {
-      logger.info("slack.dedup.skip", {
-        apiAppId,
-        dedupKey,
-        reason: "already_done",
-      });
+      log.info("slack.dedup.skip", { dedupKey, reason: "already_done" });
       return;
     }
     const reserved = await reserve(apiAppId, dedupKey, reactor || "system");
     if (!reserved) {
-      logger.info("slack.dedup.skip", {
-        apiAppId,
-        dedupKey,
-        reason: "in_flight",
-      });
+      log.info("slack.dedup.skip", { dedupKey, reason: "in_flight" });
       return;
     }
   } catch (err) {
-    logger.warn("slack.reaction.dedup_unavailable", {
+    log.warn("slack.reaction.dedup_unavailable", {
       apiAppId,
       error: sanitizeError(err),
     });
   }
 
+  // Read app metadata before touch so the handler sees botUserId without
+  // a duplicate roundtrip when touch only updates lastSeenAt.
   let app: SlackAppRecord | null = null;
   try {
-    app = await touchSlackApp(apiAppId, event.team);
+    app = await getSlackApp(apiAppId);
   } catch (err) {
-    logger.warn("slack.reaction.touch_app_failed", {
-      apiAppId,
-      error: sanitizeError(err),
-    });
+    log.warn("slack.reaction.app_load_failed", { error: sanitizeError(err) });
+  }
+  // touchSlackApp only after dedup so retries don't bump lastSeenAt.
+  try {
+    const touched = await touchSlackApp(apiAppId, event.team);
+    if (touched) app = touched;
+  } catch (err) {
+    log.warn("slack.reaction.touch_app_failed", { error: sanitizeError(err) });
   }
 
-  await handler({ client, apiAppId, event, app });
+  await handler({ client, apiAppId, event, app, logger: log });
   await markDone(apiAppId, dedupKey, reactor || "system");
 };

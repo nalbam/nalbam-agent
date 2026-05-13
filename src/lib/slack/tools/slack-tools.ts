@@ -31,20 +31,21 @@ import {
   warmUserNames,
   getUserName,
 } from "@/lib/slack/user-name-cache";
+import { withSlackRetry } from "@/lib/slack/with-retry";
 
 import type { ToolContext } from "@/lib/slack/tools/registry";
 
-const SLACK_FILE_HOSTS = new Set([
+export const SLACK_FILE_HOSTS = new Set([
   "files.slack.com",
   "files-edge.slack.com",
   "files-pri.slack.com",
 ]);
-const SLACK_PROFILE_HOSTS = new Set([
+export const SLACK_PROFILE_HOSTS = new Set([
   "avatars.slack-edge.com",
   "a.slack-edge.com",
   "secure.gravatar.com",
 ]);
-const SLACK_IMAGE_HOSTS = new Set<string>([...SLACK_FILE_HOSTS, ...SLACK_PROFILE_HOSTS]);
+export const SLACK_IMAGE_HOSTS = new Set<string>([...SLACK_FILE_HOSTS, ...SLACK_PROFILE_HOSTS]);
 
 const USER_ID_RE = /^[UW][A-Z0-9]+$/;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -93,7 +94,7 @@ const readBodyCapped = async (res: Response, maxBytes: number): Promise<Uint8Arr
   return buf;
 };
 
-const downloadSlackFile = async (
+export const downloadSlackFile = async (
   url: string,
   token: string,
   maxBytes: number,
@@ -121,7 +122,7 @@ const downloadSlackFile = async (
   return { body, mime };
 };
 
-const guessImageMime = (url: string): string => {
+export const guessImageMime = (url: string): string => {
   try {
     const path = new URL(url).pathname.toLowerCase();
     if (path.endsWith(".png")) return "image/png";
@@ -218,24 +219,27 @@ export const readAttachedImagesTool = (ctx: ToolContext): Tool =>
 
       if (candidates.length === 0) return [];
 
-      const out: Array<{ name: string; summary: string }> = [];
-      // Sequential to bound concurrent vision calls — multimodal LLM
-      // requests are expensive, and the agent rarely needs >3 images.
-      for (const c of candidates) {
-        try {
-          const { body, mime } = await downloadSlackFile(c.url, token, env.MAX_IMAGE_BYTES);
-          const effective = mime.startsWith("image/") ? mime : guessImageMime(c.url);
-          if (!effective.startsWith("image/")) continue;
-          const summary = await describeImage({ data: body, mediaType: effective });
-          out.push({ name: c.name, summary });
-        } catch (err) {
-          logger.warn("slack.read_attached_images.failed", {
-            url: c.url,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-      return out;
+      // Run download + vision describe in parallel. `limit` is capped at 10
+      // by the schema, so we don't need a separate concurrency cap.
+      type Entry = { name: string; summary: string } | null;
+      const results = await Promise.all(
+        candidates.map(async (c): Promise<Entry> => {
+          try {
+            const { body, mime } = await downloadSlackFile(c.url, token, env.MAX_IMAGE_BYTES);
+            const effective = mime.startsWith("image/") ? mime : guessImageMime(c.url);
+            if (!effective.startsWith("image/")) return null;
+            const summary = await describeImage({ data: body, mediaType: effective });
+            return { name: c.name, summary };
+          } catch (err) {
+            logger.warn("slack.read_attached_images.failed", {
+              url: c.url,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return null;
+          }
+        }),
+      );
+      return results.filter((r): r is { name: string; summary: string } => r !== null);
     },
   });
 
@@ -484,25 +488,6 @@ interface SlackHistoryMessage {
   files?: SlackFileEntry[];
   reactions?: SlackHistoryReaction[];
 }
-
-const withSlackRetry = async <T>(fn: () => Promise<T>, label: string, attempts = 3): Promise<T> => {
-  let delayMs = 1000;
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      return await fn();
-    } catch (err) {
-      const data = (err as { data?: { error?: string } }).data;
-      if (data?.error === "ratelimited" && i < attempts - 1) {
-        logger.warn("slack.ratelimited", { label, delayMs });
-        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-        delayMs *= 2;
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error(`${label}: exhausted retries`);
-};
 
 export const fetchThreadHistoryTool = (ctx: ToolContext): Tool =>
   tool({

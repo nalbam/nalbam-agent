@@ -35,6 +35,11 @@ import { z } from "zod";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
+import {
+  SLACK_IMAGE_HOSTS,
+  downloadSlackFile,
+  guessImageMime,
+} from "@/lib/slack/tools/slack-tools";
 import { isPublicAddress } from "@/lib/slack/tools/web";
 import type { ToolContext } from "@/lib/slack/tools/registry";
 
@@ -295,26 +300,176 @@ export const attachImageFromUrlTool = (ctx: ToolContext): Tool =>
     },
   });
 
-// ── edit_image (stub) ──────────────────────────────────────────────────
+// ── edit_image ─────────────────────────────────────────────────────────
 
 const editImageSchema = z.object({
-  prompt: z.string(),
-  urls: z.array(z.string()).optional(),
+  prompt: z.string().describe("How to transform the source image(s)."),
+  urls: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Optional input image URLs. Must be on files*.slack.com or a Slack profile-image host. If omitted, uses images attached to the current Slack mention.",
+    ),
   limit: z.number().int().min(1).max(5).optional().default(2),
 });
 
-export const editImageTool = (ctx: ToolContext): Tool => {
-  void ctx;
-  return tool({
+const OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
+const FILENAME_FOR_MIME: Record<string, string> = {
+  "image/png": "input.png",
+  "image/jpeg": "input.jpg",
+  "image/gif": "input.gif",
+  "image/webp": "input.webp",
+  "image/bmp": "input.bmp",
+};
+
+interface OpenAiImagesEditResponse {
+  data?: Array<{ b64_json?: string; url?: string }>;
+  error?: { message?: string };
+}
+
+const editImageOpenAI = async ({
+  apiKey,
+  model,
+  prompt,
+  images,
+}: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+  images: Array<{ data: Uint8Array; mime: string }>;
+}): Promise<Uint8Array> => {
+  // OpenAI accepts multipart/form-data with one or more `image[]` fields.
+  // The Node `Blob` constructor needs a non-shared ArrayBuffer; `Buffer.from`
+  // returns a Buffer view that satisfies the BlobPart interface.
+  const form = new FormData();
+  form.append("model", model);
+  form.append("prompt", prompt);
+  form.append("response_format", "b64_json");
+  for (const img of images) {
+    const filename = FILENAME_FOR_MIME[img.mime] ?? "input.png";
+    // Copy into a fresh ArrayBuffer so Blob's typings accept it under
+    // `strict + noUncheckedIndexedAccess` (the input Uint8Array's underlying
+    // buffer may be ArrayBufferLike, not ArrayBuffer).
+    const copy = new Uint8Array(img.data);
+    form.append("image[]", new Blob([copy], { type: img.mime }), filename);
+  }
+  const res = await fetch(OPENAI_IMAGE_EDIT_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as OpenAiImagesEditResponse;
+      if (body?.error?.message) detail = `${detail}: ${body.error.message}`;
+    } catch {
+      const text = await res.text().catch(() => "");
+      if (text) detail = `${detail}: ${text.slice(0, 200)}`;
+    }
+    throw new Error(`OpenAI images/edits failed — ${detail}`);
+  }
+  const json = (await res.json()) as OpenAiImagesEditResponse;
+  const b64 = json.data?.[0]?.b64_json;
+  if (!b64) {
+    throw new Error("OpenAI images/edits returned no b64_json payload");
+  }
+  return new Uint8Array(Buffer.from(b64, "base64"));
+};
+
+const collectInputImages = async (
+  ctx: ToolContext,
+  urls: string[] | undefined,
+  limit: number,
+  maxBytes: number,
+): Promise<Array<{ data: Uint8Array; mime: string }>> => {
+  const token = ctx.client.token;
+  if (!token) throw new Error("Slack client missing token");
+
+  type Candidate = { url: string; mimeHint: string };
+  const seen = new Set<string>();
+  const candidates: Candidate[] = [];
+
+  // Explicit urls win — caller is being deliberate.
+  for (const extra of urls ?? []) {
+    if (candidates.length >= limit) break;
+    if (seen.has(extra)) continue;
+    seen.add(extra);
+    candidates.push({ url: extra, mimeHint: "" });
+  }
+  // Fall back to mention attachments when no urls were passed.
+  if (candidates.length === 0) {
+    const files = Array.isArray(ctx.event?.files) ? ctx.event.files : [];
+    for (const fRaw of files) {
+      if (candidates.length >= limit) break;
+      const f = fRaw as { mimetype?: string; url_private?: string; url_private_download?: string };
+      const mime = String(f.mimetype ?? "");
+      if (!mime.startsWith("image/")) continue;
+      const dl = f.url_private_download ?? f.url_private;
+      if (!dl || seen.has(dl)) continue;
+      seen.add(dl);
+      candidates.push({ url: dl, mimeHint: mime });
+    }
+  }
+  // SSRF pre-flight: synchronous validation before any network IO.
+  for (const c of candidates) {
+    let parsed: URL;
+    try {
+      parsed = new URL(c.url);
+    } catch {
+      throw new Error(`invalid Slack file URL: ${c.url}`);
+    }
+    if (parsed.protocol !== "https:" || !SLACK_IMAGE_HOSTS.has(parsed.hostname)) {
+      throw new Error(`invalid Slack file URL: ${c.url}`);
+    }
+  }
+  // Download in parallel — OpenAI accepts multiple `image[]` entries.
+  return Promise.all(
+    candidates.map(async (c) => {
+      const { body, mime } = await downloadSlackFile(c.url, token, maxBytes);
+      const effective = mime.startsWith("image/")
+        ? mime
+        : c.mimeHint.startsWith("image/")
+          ? c.mimeHint
+          : guessImageMime(c.url);
+      return { data: body, mime: effective };
+    }),
+  );
+};
+
+export const editImageTool = (ctx: ToolContext): Tool =>
+  tool({
     description:
-      "Edit an existing image with a text prompt. Currently NOT implemented — returns an error so the agent can pivot to a text-only suggestion or generate_image. This tool will be wired in a follow-up PR.",
+      "Edit existing image(s) with a text prompt and upload the result to the Slack thread. By default uses images attached to the current Slack mention. To edit images from earlier in the thread, first call fetch_thread_history, then pass the desired `files[*].url_private_download` values via `urls`. To edit a user's profile image, first call fetch_user_profile and pass the returned `image_url` via `urls`. URLs must be on files*.slack.com or a Slack profile image host (avatars.slack-edge.com, a.slack-edge.com, secure.gravatar.com). Use this — not generate_image — whenever the user wants to transform, restyle, or modify an existing image. Currently OpenAI-only; returns an error when IMAGE_PROVIDER=bedrock so the agent can fall back to a text reply or generate_image.",
     inputSchema: editImageSchema,
-    execute: async (args): Promise<{ error: string }> => {
-      void args;
-      return {
-        error:
-          "edit_image is not implemented yet — try generate_image with a descriptive prompt, or describe the desired changes textually.",
-      };
+    execute: async ({ prompt, urls, limit }) => {
+      const env = getServerEnv();
+      const provider = env.IMAGE_PROVIDER ?? env.LLM_PROVIDER;
+      if (provider !== "openai") {
+        throw new Error(
+          `edit_image: provider '${provider}' not supported yet (only openai). Fall back to a text description or generate_image.`,
+        );
+      }
+      if (!env.OPENAI_API_KEY) {
+        throw new Error("edit_image: OPENAI_API_KEY is not configured.");
+      }
+      const inputs = await collectInputImages(ctx, urls, limit, env.MAX_IMAGE_BYTES);
+      if (inputs.length === 0) {
+        throw new Error(
+          "no input image found — attach an image to the message, or pass `urls` from fetch_thread_history / fetch_user_profile.",
+        );
+      }
+      const edited = await editImageOpenAI({
+        apiKey: env.OPENAI_API_KEY,
+        model: env.IMAGE_MODEL,
+        prompt,
+        images: inputs,
+      });
+      const upload = await uploadToThread(ctx, edited, "edited.png", env.IMAGE_MODEL);
+      logger.info("slack.edit_image.uploaded", {
+        bytes: edited.byteLength,
+        sources: inputs.length,
+      });
+      return upload;
     },
   });
-};

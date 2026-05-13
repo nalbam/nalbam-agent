@@ -17,6 +17,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { isOperatorAllowed } from "@/lib/auth/operator";
 import { logger } from "@/lib/logger";
 import { getSession } from "@/lib/auth/session";
 import {
@@ -41,6 +42,10 @@ const requireSession = async () => {
   const session = await getSession();
   if (!session?.user) {
     throw new Error("unauthorized");
+  }
+  const check = isOperatorAllowed(session.user);
+  if (!check.allowed) {
+    throw new Error("forbidden: operator role required");
   }
   return session;
 };

@@ -17,7 +17,7 @@
  */
 import type { WebClient } from "@slack/web-api";
 
-import { logger } from "@/lib/logger";
+import { logger as defaultLogger, type Logger } from "@/lib/logger";
 import { sanitizeError } from "@/lib/slack/formatter";
 import { handleMessage, type SlackMessageEvent } from "@/lib/slack/handlers/message";
 import {
@@ -30,7 +30,9 @@ export interface SlackEventCallback {
   type?: string;
   api_app_id?: string;
   team_id?: string;
-  event?: (SlackMessageEvent & { type?: string }) | (SlackReactionEvent & { type?: string });
+  event?:
+    | (SlackMessageEvent & { type?: string })
+    | (SlackReactionEvent & { type?: string });
   challenge?: string;
 }
 
@@ -38,6 +40,7 @@ export interface DispatchInput {
   client: WebClient;
   apiAppId: string;
   payload: SlackEventCallback;
+  logger?: Logger;
 }
 
 const isReactionEvent = (
@@ -46,25 +49,27 @@ const isReactionEvent = (
 
 const isMessageLikeEvent = (
   e: NonNullable<SlackEventCallback["event"]>,
-): e is SlackMessageEvent & { type: string } => e.type === "app_mention" || e.type === "message";
+): e is SlackMessageEvent & { type: string } =>
+  e.type === "app_mention" || e.type === "message";
 
 export const dispatchEvent = async (input: DispatchInput): Promise<void> => {
   const { client, apiAppId, payload } = input;
+  const log = input.logger ?? defaultLogger;
   const event = payload.event;
   if (!event || !event.type) {
-    logger.info("slack.router.no_event", { apiAppId });
+    log.info("slack.router.no_event", { apiAppId });
     return;
   }
   try {
     if (isReactionEvent(event)) {
       if (!isHandledReaction(event.reaction)) return;
       if (event.item?.type !== "message") return;
-      await handleReaction({ client, apiAppId, event });
+      await handleReaction({ client, apiAppId, event, logger: log });
       return;
     }
     if (isMessageLikeEvent(event)) {
       if (event.type === "app_mention") {
-        await handleMessage({ client, apiAppId, isDm: false, event });
+        await handleMessage({ client, apiAppId, isDm: false, event, logger: log });
         return;
       }
       if (event.type === "message") {
@@ -74,15 +79,15 @@ export const dispatchEvent = async (input: DispatchInput): Promise<void> => {
         if (event.channel_type !== "im") return;
         // Drop bot-authored messages and message subtypes (joins, edits, etc.).
         if (event.bot_id || event.subtype) return;
-        await handleMessage({ client, apiAppId, isDm: true, event });
+        await handleMessage({ client, apiAppId, isDm: true, event, logger: log });
         return;
       }
     }
-    logger.info("slack.router.unhandled", { apiAppId, eventType: event.type });
+    log.info("slack.router.unhandled", { apiAppId, eventType: event.type });
   } catch (err) {
     // Handlers manage their own user-visible errors; this catches anything
     // that escapes (defense in depth, since we run inside after()).
-    logger.error("slack.router.unhandled_error", {
+    log.error("slack.router.unhandled_error", {
       apiAppId,
       eventType: event.type,
       error: sanitizeError(err),

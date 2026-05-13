@@ -20,6 +20,8 @@
  * verification — the HMAC is computed over the exact bytes Slack sent,
  * not a JSON.parse/stringify round-trip.
  */
+import { randomUUID } from "node:crypto";
+
 import { after, NextResponse } from "next/server";
 
 import { logger } from "@/lib/logger";
@@ -92,18 +94,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     return new NextResponse("", { status: 401 });
   }
 
+  // Per-request logger — every downstream log (router, handlers, agent,
+  // tools) gets `requestId` for free so CloudWatch can group a single
+  // request's events in a multi-tenant deployment.
+  const requestId = randomUUID();
+  const log = logger.child({ requestId, apiAppId });
+
   // Hand off to after() so the heavy work runs AFTER the 200 returns.
   // Amplify SSR / Lambda continues executing until either after() resolves
   // or the function's max duration elapses.
   after(async () => {
     try {
       const client = await getSlackWebClient(creds.botToken);
-      await dispatchEvent({ client, apiAppId, payload: parsed });
+      await dispatchEvent({ client, apiAppId, payload: parsed, logger: log });
     } catch (err) {
-      logger.error("slack.route.after_failed", {
-        apiAppId,
-        error: sanitizeError(err),
-      });
+      log.error("slack.route.after_failed", { error: sanitizeError(err) });
     }
   });
 

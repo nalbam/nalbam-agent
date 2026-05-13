@@ -9,10 +9,22 @@
  * The TTL attribute makes DynamoDB sweep expired rows automatically; the
  * default 1h matches the original lambda-gurumi-bot behavior. Operators
  * shouldn't depend on history older than a session.
+ *
+ * Concurrency: writes use optimistic concurrency control via a `version`
+ * column. `loadThreadHistory` returns the version it observed so callers
+ * can pass it back to `saveThreadHistory`; the put is `ConditionExpression`-
+ * guarded on the version matching. If two concurrent mentions in the same
+ * thread both load `version=N` and try to save `version=N+1`, only the
+ * first wins — the second logs `slack.conversation.race_lost` so the
+ * collision is visible. (Frequency is rare in practice; the alternative —
+ * append-only sub-rows — is a heavier schema change.)
  */
-import { getItem, putItem } from "@/lib/dynamodb-helpers";
-import { keys, ttlFromDate } from "@/lib/dynamodb";
-import { logger } from "@/lib/logger";
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
+
+import { getDocumentClient, getTableName, keys, ttlFromDate } from "@/lib/dynamodb";
+import { getItem } from "@/lib/dynamodb-helpers";
+import { logger as defaultLogger, type Logger } from "@/lib/logger";
 
 /** Roles supported in thread history. Matches Vercel AI SDK ModelMessage shape. */
 export type ThreadRole = "user" | "assistant" | "system" | "tool";
@@ -22,11 +34,18 @@ export interface ThreadMessage {
   content: string;
 }
 
+export interface LoadedThreadHistory {
+  messages: ThreadMessage[];
+  /** Row version observed on load. Pass back to `saveThreadHistory` for OCC. */
+  version: number;
+}
+
 type ThreadRow = {
   apiAppId?: string;
   threadTs?: string;
   messages?: string;
   ttl?: number;
+  version?: number;
 } & Record<string, unknown>;
 
 const DEFAULT_TTL_SECONDS = 3600;
@@ -42,37 +61,53 @@ const isThreadMessage = (v: unknown): v is ThreadMessage =>
 export const loadThreadHistory = async (
   apiAppId: string,
   threadTs: string,
-): Promise<ThreadMessage[]> => {
-  if (!apiAppId || !threadTs) return [];
+  log: Logger = defaultLogger,
+): Promise<LoadedThreadHistory> => {
+  if (!apiAppId || !threadTs) return { messages: [], version: 0 };
   let row: ThreadRow | null;
   try {
     row = await getItem<ThreadRow>(keys.slackThread(apiAppId, threadTs));
   } catch (err) {
-    logger.warn("slack.conversation.load_failed", {
+    log.warn("slack.conversation.load_failed", {
       apiAppId,
       threadTs,
       error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return { messages: [], version: 0 };
   }
-  if (!row?.messages) return [];
+  const version = typeof row?.version === "number" ? row.version : 0;
+  if (!row?.messages) return { messages: [], version };
   try {
     const parsed: unknown = JSON.parse(row.messages);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isThreadMessage);
+    if (!Array.isArray(parsed)) return { messages: [], version };
+    return { messages: parsed.filter(isThreadMessage), version };
   } catch (err) {
-    logger.warn("slack.conversation.parse_failed", {
+    log.warn("slack.conversation.parse_failed", {
       apiAppId,
       threadTs,
       error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return { messages: [], version };
   }
 };
 
 export interface SaveThreadOptions {
   ttlSeconds?: number;
   maxChars?: number;
+  /**
+   * Optimistic-concurrency token — the `version` returned by the prior
+   * `loadThreadHistory`. Omit to disable the OCC check (first-time creation
+   * is detected when `expectedVersion === 0` and uses
+   * `attribute_not_exists(version)` instead).
+   */
+  expectedVersion?: number;
+  logger?: Logger;
+}
+
+export interface SaveThreadResult {
+  ok: boolean;
+  /** True when the row was created/updated; false when the OCC check failed. */
+  raced?: boolean;
 }
 
 export const saveThreadHistory = async (
@@ -80,27 +115,54 @@ export const saveThreadHistory = async (
   threadTs: string,
   messages: ThreadMessage[],
   options: SaveThreadOptions = {},
-): Promise<void> => {
-  if (!apiAppId || !threadTs) return;
+): Promise<SaveThreadResult> => {
+  if (!apiAppId || !threadTs) return { ok: false };
+  const log = options.logger ?? defaultLogger;
   const maxChars = options.maxChars ?? 4000;
   const ttlSeconds = options.ttlSeconds ?? DEFAULT_TTL_SECONDS;
+  const expectedVersion = options.expectedVersion ?? 0;
   const trimmed = truncateToChars(messages, maxChars);
   const key = keys.slackThread(apiAppId, threadTs);
+  const nextVersion = expectedVersion + 1;
+
+  const item = {
+    ...key,
+    entity: "SLACK_THREAD",
+    apiAppId,
+    threadTs,
+    messages: JSON.stringify(trimmed),
+    ttl: ttlFromDate((nowEpoch() + ttlSeconds) * 1000),
+    version: nextVersion,
+  };
+
+  const cmd = new PutCommand({
+    TableName: getTableName(),
+    Item: item,
+    ConditionExpression:
+      expectedVersion === 0 ? "attribute_not_exists(#v)" : "#v = :expected",
+    ExpressionAttributeNames: { "#v": "version" },
+    ExpressionAttributeValues:
+      expectedVersion === 0 ? undefined : { ":expected": expectedVersion },
+  });
+
   try {
-    await putItem({
-      ...key,
-      entity: "SLACK_THREAD",
-      apiAppId,
-      threadTs,
-      messages: JSON.stringify(trimmed),
-      ttl: ttlFromDate((nowEpoch() + ttlSeconds) * 1000),
-    });
+    await getDocumentClient().send(cmd);
+    return { ok: true };
   } catch (err) {
-    logger.warn("slack.conversation.save_failed", {
+    if (err instanceof ConditionalCheckFailedException) {
+      log.warn("slack.conversation.race_lost", {
+        apiAppId,
+        threadTs,
+        expectedVersion,
+      });
+      return { ok: false, raced: true };
+    }
+    log.warn("slack.conversation.save_failed", {
       apiAppId,
       threadTs,
       error: err instanceof Error ? err.message : String(err),
     });
+    return { ok: false };
   }
 };
 

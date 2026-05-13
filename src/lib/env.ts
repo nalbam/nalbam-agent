@@ -66,6 +66,11 @@ const serverSchema = z.object({
   // Metadata (team_id, ACL, persona) lives in DynamoDB. See src/lib/slack/*.
   SLACK_SSM_PREFIX: z.string().default("/nalbam-agent/slack/apps"),
   SLACK_SSM_CACHE_TTL_SECONDS: positiveInt(10, 300),
+  // Comma-separated email allowlist for the operator UI at /slack and the
+  // `pnpm slack-apps` CLI. When unset (default), any Better-Auth-authenticated
+  // user can register / delete / change ACL on Slack apps. Set this in
+  // production to restrict to known operators.
+  OPERATOR_ALLOWED_EMAILS: trimmedOptional,
 
   // ── LLM / agent
   LLM_PROVIDER: z.enum(["openai", "bedrock"]).default("openai"),
@@ -181,6 +186,7 @@ export const getServerEnv = (): ServerEnv => {
     LOG_LEVEL: process.env.LOG_LEVEL,
     SLACK_SSM_PREFIX: process.env.SLACK_SSM_PREFIX,
     SLACK_SSM_CACHE_TTL_SECONDS: process.env.SLACK_SSM_CACHE_TTL_SECONDS,
+    OPERATOR_ALLOWED_EMAILS: process.env.OPERATOR_ALLOWED_EMAILS,
     LLM_PROVIDER: process.env.LLM_PROVIDER,
     LLM_MODEL: process.env.LLM_MODEL,
     IMAGE_PROVIDER: process.env.IMAGE_PROVIDER,
@@ -215,6 +221,11 @@ export const getServerEnv = (): ServerEnv => {
   }
   cachedServerEnv = result.data;
   return cachedServerEnv;
+};
+
+/** Test-only helper to reset the cached server env between cases. */
+export const __resetServerEnvForTests = (): void => {
+  cachedServerEnv = undefined;
 };
 
 export const trustedOriginsList = (env: ServerEnv): string[] => {
