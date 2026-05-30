@@ -1,197 +1,137 @@
 # nalbam-agent
 
-A **multi-tenant Slack AI agent** built on Next.js 16 (App Router) + Better Auth + DynamoDB single-table + Vercel AI SDK, deployed to AWS Amplify Hosting (SSR).
+**멀티테넌트 · 멀티채널 · 플러그인 확장형 AI 에이전트.**
 
-One deployment serves arbitrarily many Slack apps. Each app's signing secret and bot token live as SSM SecureString parameters; per-app ACL and persona overrides live in DynamoDB alongside the agent's dedup, conversation history, and metadata rows. A built-in operator web UI (`/slack`, Better Auth-protected) and a CLI (`pnpm slack-apps`) wrap the same store helpers.
+하나의 배포가 다수 테넌트를 격리해 서빙하고, 입력·회신·도구·LLM·저장소를 플러그인으로
+교체·추가하며, 채널 무관 코어가 모든 채널을 동일하게 처리한다.
 
-Ported from [`lambda-gurumi-bot`](https://github.com/nalbam/lambda-gurumi-bot) (Python + Serverless Framework + AWS Lambda) — see [`docs/slack-bot.md`](./docs/slack-bot.md) for the full architecture.
+- 목표 설계(계층·인터페이스·플러그인 프로토콜·실행 모델): [`docs/architecture.md`](./docs/architecture.md)
+- 구현 목표(영역별 명세 + 순서): [`docs/roadmap.md`](./docs/roadmap.md)
 
-## Architecture
+> **현재 상태**: 목표의 첫 단계로 **Slack 채널**을 구현 중이다. 입력·회신·도구·자격증명이
+> 아직 Slack에 결합되어 있으며, 이를 채널 무관 코어 + 어댑터로 일반화하는 것이 진행 방향이다.
+
+## 목표 구조
 
 ```mermaid
 flowchart LR
-  SLACK["Slack workspace"]
-  subgraph Amplify["AWS Amplify Hosting (Lambda SSR)"]
-    ROUTE["POST /api/slack/events<br/>verify · dedup · after()"]
-    AGENT["agent (Vercel AI SDK)<br/>streamText + tools"]
-    UI["/slack operator UI<br/>(Better Auth)"]
-    ROUTE --> AGENT
+  subgraph CH["Channels (plugin adapters)"]
+    SLACK["Slack"]
+    WEB["Web UI"]
+    API["HTTP API"]
+    TG["Telegram"]
   end
-  subgraph AWS["AWS account"]
-    DDB[("DynamoDB<br/>SLACK_APP / DEDUP /<br/>DONE / THREAD + USER")]
-    SSM[("SSM Parameter Store<br/>per-app SecureStrings")]
-    BR[("Bedrock (optional)")]
+  subgraph CORE["Channel-agnostic core"]
+    GW["pipeline<br/>dedup · ACL · throttle · routing"]
+    AGENT["agent runtime<br/>LLM + tools"]
+    GW --> AGENT
   end
-  subgraph EXT["External"]
-    OPENAI[("OpenAI")]
-    TAVILY[("Tavily")]
-    JINA[("Jina Reader")]
+  subgraph PLUG["Pluggable backends"]
+    LLM["LLM providers"]
+    STORE["StorageProvider"]
+    MEM["MemoryStore"]
+    CRED["CredentialProvider"]
   end
-
-  SLACK -- "event_callback" --> ROUTE
-  ROUTE -- "SSM GetParameters" --> SSM
-  ROUTE -- "GetItem / PutItem" --> DDB
-  AGENT -- "chat.postMessage / chat.update / files.uploadV2" --> SLACK
-  AGENT -- "LLM" --> OPENAI
-  AGENT -- "LLM (alt)" --> BR
-  AGENT -- "search_web / search_images" --> TAVILY
-  AGENT -- "fetch_webpage" --> JINA
-  UI -- "SSM Put/Delete · DDB Update" --> SSM
-  UI -- "list / upsert / delete" --> DDB
+  CH -- "InboundMessage" --> GW
+  AGENT -- "OutboundChunk" --> CH
+  AGENT --> LLM
+  CORE --> STORE
+  CORE --> MEM
+  CH --> CRED
 ```
 
-## Stack
+채널 어댑터가 native 페이로드를 `InboundMessage`로 정규화하고, 코어는 채널을 모른 채 처리하며,
+응답은 `Responder`가 채널 native 포맷으로 렌더링한다. 상세는 [`docs/architecture.md`](./docs/architecture.md).
+
+## 기술 스택 (현재 구현)
 
 - Node.js 22 · pnpm 11 · TypeScript `strict + noUncheckedIndexedAccess`
 - Next.js 16 (App Router) · React 19
-- Vercel AI SDK 6 with `@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`
-- `@slack/web-api` 7
-- Better Auth 1.6 (operator UI session)
-- DynamoDB single-table (PK/SK + GSI1 + TTL)
-- AWS SSM Parameter Store for per-app secrets
-- `unpdf` for PDF extraction
+- Vercel AI SDK 6 (`@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`)
+- `@slack/web-api` (현재 채널)
+- Better Auth (operator UI)
+- DynamoDB 단일 테이블 + Redis/Valkey(KV)
 - Tailwind v4 + shadcn/ui (`new-york`)
 - Vitest
 
-## Quick start
+## 빠른 시작
 
-You need AWS credentials configured locally (`aws configure` / `aws sso login` / `AWS_PROFILE`) — the dev server signs DynamoDB and SSM requests with the default credential chain.
+현재 구현된 경로(Slack 채널 + operator UI)로 로컬 실행한다. AWS 자격증명이 로컬 체인
+(`aws configure` / `aws sso login` / `AWS_PROFILE`)에 있어야 한다 — dev 서버가 실제 DynamoDB·SSM을 사용한다.
 
 ```bash
 cp .env.example .env.local
-# At minimum: BETTER_AUTH_SECRET (openssl rand -base64 32), OPENAI_API_KEY,
-# AWS_REGION, DYNAMODB_TABLE_NAME. The bot doesn't run without an LLM key.
+# 최소: BETTER_AUTH_SECRET (openssl rand -base64 32), OPENAI_API_KEY,
+#       AWS_REGION, DYNAMODB_TABLE_NAME
 
-docker compose up -d         # Valkey only (KV for Better Auth secondaryStorage)
+docker compose up -d         # Valkey (Better Auth secondaryStorage용 KV)
 pnpm install
-pnpm db:init                 # creates the DynamoDB table + GSI1 + TTL
+pnpm db:init                 # DynamoDB 테이블 + GSI1 + TTL 생성
 pnpm dev                     # http://localhost:3000
 ```
 
-Then register your first Slack app:
+Slack 앱 등록(현재 채널):
 
 ```bash
-# Via CLI (prompts for signing_secret + bot_token, hidden):
-pnpm slack-apps register A0XXXXXXXXX
-
-# Or via the operator web UI (Better Auth — sign up first):
-open http://localhost:3000/signup
-# then visit /slack/new after authenticating
+pnpm slack-apps register A0XXXXXXXXX   # signing_secret + bot_token 프롬프트(숨김 입력)
+# 또는 operator 웹 UI: /signup 후 /slack/new
 ```
 
-The full Slack-side configuration (scopes, event subscriptions, `Request URL`) is documented in [`docs/slack-bot.md`](./docs/slack-bot.md).
+## 스크립트
 
-## Scripts
-
-| Command | Description |
+| 명령 | 설명 |
 |---|---|
-| `pnpm dev` | Start the Next.js dev server |
-| `pnpm build` | Production build |
-| `pnpm start` | Run the production build |
-| `pnpm lint` | ESLint |
-| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm dev` | Next.js dev 서버 |
+| `pnpm build` / `start` | 프로덕션 빌드 / 실행 |
+| `pnpm lint` / `typecheck` | ESLint / `tsc --noEmit` |
 | `pnpm format` / `format:check` | Prettier |
 | `pnpm test` / `test:watch` / `test:ui` | Vitest |
-| `pnpm db:init` | Create the application DynamoDB table + GSI1 + TTL (real AWS by default, or DynamoDB Local when `DYNAMODB_ENDPOINT` is set). Applies cloud-man tags. |
-| `pnpm db:delete` | Delete the application table. Refuses tables missing the `ManagedBy=CloudManager` tag. |
-| `pnpm slack-apps` | Operator CLI — `list / get / register / delete / acl / persona / name`. See [`docs/slack-bot.md`](./docs/slack-bot.md). |
+| `pnpm db:init` / `db:delete` | DynamoDB 테이블 생성 / 삭제 |
+| `pnpm slack-apps` | operator CLI — `list / get / register / delete / acl / persona / name` |
 
-## Project layout
+## 프로젝트 레이아웃 (현재 구현)
 
 ```
 src/
 ├── app/
-│   ├── (auth)/                       sign-up + sign-in (operator UI auth)
-│   ├── (protected)/
-│   │   └── slack/                    operator UI: list / register / edit / delete
+│   ├── (auth)/                       operator UI 인증 (sign-up/in)
+│   ├── (protected)/slack/            operator UI: list / register / edit / delete
 │   ├── api/
 │   │   ├── auth/[...all]             Better Auth handler
-│   │   ├── slack/events              Slack receiver — verify + dedup + after()
-│   │   ├── health                    Amplify health probe
-│   │   └── csp-report                CSP violation receiver
-│   ├── layout.tsx · page.tsx
-│   ├── error.tsx · not-found.tsx · loading.tsx
-│   ├── manifest.ts · robots.ts · sitemap.ts · opengraph-image.tsx
-│   └── globals.css                   Design tokens (@theme inline)
-├── components/
-│   ├── sign-out-button.tsx
-│   └── ui/                           shadcn primitives
+│   │   ├── slack/events              Slack receiver (verify + dedup + after())
+│   │   ├── health                    헬스 프로브
+│   │   └── csp-report                CSP 위반 수신
+│   └── globals.css                   디자인 토큰
+├── components/ui/                    shadcn primitives
 ├── lib/
-│   ├── slack/
-│   │   ├── verify.ts                 HMAC + 5-min replay guard
-│   │   ├── credentials.ts            SSM SecureString reader/writer + cache
-│   │   ├── app-metadata.ts           DDB CRUD for SLACK_APP rows
-│   │   ├── dedup.ts                  Two-stage idempotency (reserve + markDone)
-│   │   ├── conversation.ts           Thread history with truncation
-│   │   ├── formatter.ts              mrkdwn splitter + token redaction
-│   │   ├── stream.ts                 Lazy placeholder + chat.update throttle
-│   │   ├── client.ts                 Per-app WebClient cache
-│   │   ├── user-name-cache.ts        Display-name cache + parallel warm
-│   │   ├── acl.ts                    Channel/user allowlist (env + per-app)
-│   │   ├── system-prompt.ts          5-layer prompt assembly
-│   │   ├── router.ts                 event dispatch (mention/DM/reaction)
-│   │   ├── agent.ts                  streamText wrapper
-│   │   ├── handlers/                 message + reactions
-│   │   └── tools/                    time / web / search / slack-tools / image
-│   ├── llm/
-│   │   ├── factory.ts                openai + bedrock provider selection
-│   │   └── vision.ts                 describeImage helper (multimodal)
+│   ├── slack/                        현재 Slack 채널 구현 (verify/credentials/dedup/
+│   │                                 conversation/stream/acl/agent/tools/handlers/…)
+│   ├── llm/                          provider factory + vision
 │   ├── auth/                         Better Auth + DynamoDB adapter + KV
-│   ├── auth.ts · auth-client.ts
-│   ├── dynamodb.ts                   keys / gsi1 / validateId / sanitizeKeyValue
-│   ├── dynamodb-helpers.ts           thin DocumentClient wrappers
-│   ├── email.ts                      AWS SES sender (lazy)
-│   ├── env.ts                        zod-validated server/client env
-│   ├── logger.ts                     Structured JSON logger
-│   └── safe-redirect.ts              ?redirect= open-redirect guard
-├── instrumentation.ts                Next.js register() hook
-└── proxy.ts                          Cheap session-cookie check
-scripts/
-├── init-dynamodb.ts / delete-dynamodb.ts
-├── slack-apps.ts                     Operator CLI
-└── copy-fonts.mjs                    Postinstall: Pretendard
+│   ├── dynamodb*.ts                  단일 테이블 키/헬퍼
+│   ├── env.ts                        zod 검증 env
+│   └── logger.ts                     구조 로깅
+├── instrumentation.ts                Next.js register() 훅
+└── proxy.ts                          세션 쿠키 체크
+scripts/                              db:init / db:delete / slack-apps / copy-fonts
 ```
 
-## Environment variables
+## 환경 변수
 
-Documented exhaustively in [`.env.example`](./.env.example). Minimum to boot the bot:
+전체 목록·기본값은 [`.env.example`](./.env.example). 부팅 최소값:
 
-- `BETTER_AUTH_SECRET` (≥ 32 chars) — operator-UI session secret
-- `AWS_REGION`, `DYNAMODB_TABLE_NAME` — DynamoDB target
-- `OPENAI_API_KEY` — required when `LLM_PROVIDER=openai` (default)
-- `SLACK_SSM_PREFIX` (defaults to `/nalbam-agent/slack/apps`)
+- `BETTER_AUTH_SECRET` (≥ 32자) — operator UI 세션
+- `AWS_REGION`, `DYNAMODB_TABLE_NAME` — DynamoDB
+- `OPENAI_API_KEY` — `LLM_PROVIDER=openai`(기본) 시 필수
+- `SLACK_SSM_PREFIX` (기본 `/nalbam-agent/slack/apps`)
 
-Useful additions:
+`src/lib/env.ts`가 모든 변수를 zod로 검증하고 실패 시 다중 줄 요약으로 fail-fast.
 
-- `LLM_PROVIDER` / `LLM_MODEL` (`openai` default; `bedrock` requires the IAM statement in [`docs/amplify-deploy.md`](./docs/amplify-deploy.md))
-- `IMAGE_PROVIDER` / `IMAGE_MODEL` (image generation is OpenAI-only)
-- `TAVILY_API_KEY` — enables Tavily for web/image search (otherwise DDG fallback for `search_web`, error for `search_images`)
-- `ALLOWED_CHANNEL_IDS` / `ALLOWED_USER_IDS` — global allowlists (CSV). Per-app overrides via the `/slack/[appId]` UI take precedence.
-- `SYSTEM_MESSAGE` (global only) / `PERSONA_MESSAGE` (per-app override available)
+## 로드맵 & 아키텍처
 
-`src/lib/env.ts` validates every variable with zod and fails fast with a multi-line summary.
+- [`docs/roadmap.md`](./docs/roadmap.md) — 최종 목표를 향해 **구현해야 할 것**을 영역별로 명세.
+- [`docs/architecture.md`](./docs/architecture.md) — 그 목표를 **어떻게** 만드는지의 설계 청사진.
 
-## DynamoDB schema
+## 라이선스
 
-Full key map in [`docs/dynamodb-schema.md`](./docs/dynamodb-schema.md). Highlights:
-
-- One table for Better Auth (`USER#`, `SESSION#`, `ACCOUNT#`, `VERIFICATION#`) AND the Slack agent (`SLACK_APP#`, `SLACK_DEDUP#`, `SLACK_DONE#`, `SLACK_THREAD#`).
-- Single `GSI1` covers email lookup (auth) and team-id lookup (Slack apps).
-- TTL on `ttl`: Better Auth sessions, verification tokens, Slack dedup rows (5 min) and thread history (1 h).
-
-## Deploying to AWS Amplify
-
-[`docs/amplify-deploy.md`](./docs/amplify-deploy.md) has the complete guide including the IAM policy (DynamoDB + SSM + optional Bedrock + optional SES) and the full env-var table. The first thing to verify on a fresh deploy is that **Next.js 16's `after()` callback runs to completion on Amplify SSR** — it's the load-bearing primitive the agent design depends on: the route returns 200 immediately and the agent keeps streaming from the deferred callback. The verification steps are in [`docs/slack-bot.md`](./docs/slack-bot.md#verifying-after-works-on-your-amplify-deployment).
-
-## Operations
-
-See [`docs/runbook.md`](./docs/runbook.md) for cold-start scenarios: provisioning a fresh table, registering a Slack app, rotating signing secrets, ACL/persona changes, `:x:` reactions, and Amplify build troubleshooting.
-
-## Testing
-
-- Unit tests next to source files (`*.test.ts`) — 152 passing.
-- Integration tests use the `*.integration.test.ts` suffix and run against DynamoDB Local (start with `docker compose --profile test up -d`). Each test calls `if (!available) return;` so missing DDB Local just no-ops.
-
-## License
-
-MIT — see [`LICENSE`](./LICENSE).
+MIT — [`LICENSE`](./LICENSE) 참조.

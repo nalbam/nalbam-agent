@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**`nalbam-agent`** — a multi-tenant Slack AI agent. One Amplify deployment serves arbitrarily many Slack apps. Each app's signing secret + bot token live as SSM SecureString parameters; per-app ACL / persona overrides live in DynamoDB.
+**`nalbam-agent`** — the goal is a **multi-tenant, multi-channel, plugin-extensible AI agent** (design: [`docs/architecture.md`](./docs/architecture.md); implementation goals: [`docs/roadmap.md`](./docs/roadmap.md)).
 
-Ported from [`lambda-gurumi-bot`](https://github.com/nalbam/lambda-gurumi-bot) (Python + Serverless + Lambda). Full architecture in [`docs/slack-bot.md`](./docs/slack-bot.md).
+**The current code** implements the first channel, Slack: one Amplify deployment serves arbitrarily many Slack apps, with per-app signing secret + bot token in SSM SecureString parameters and per-app ACL / persona overrides in DynamoDB. The sections below describe that current Slack implementation.
 
 ## Commands
 
@@ -76,7 +76,7 @@ The `after()` primitive is load-bearing — it replaces the original lambda-guru
 - `handlers/message.ts` — `app_mention` + DM. Touch metadata → strip bot self-mention → dedup → ACL → warm user names → load history → run agent → save history → markDone.
 - `handlers/reactions.ts` — `:x:` deletes a bot reply; authorization via original asker OR effective `ALLOWED_USER_IDS`. Original-asker lookup uses `conversations.history(latest+inclusive+limit=1)` → `conversations.replies(ts=parent_ts, limit=1)`.
 - `tools/registry.ts` — `buildToolRegistry(context)` returns the dict passed to `streamText({ tools })`.
-- `tools/time.ts`, `tools/web.ts`, `tools/search.ts`, `tools/slack-tools.ts`, `tools/image.ts` — 11 tools total. See `docs/slack-bot.md` for the per-tool description.
+- `tools/time.ts`, `tools/web.ts`, `tools/search.ts`, `tools/slack-tools.ts`, `tools/image.ts` — 11 tools total.
 
 ### LLM (`src/lib/llm/`)
 
@@ -114,7 +114,7 @@ Better Auth secures the **operator UI** at `/slack` (and the legacy `/dashboard`
 
 ### DynamoDB single-table (`src/lib/dynamodb.ts`, `src/lib/dynamodb-helpers.ts`)
 
-One table for Better Auth AND the Slack agent. PK/SK + GSI1 + TTL. Schema details: [`docs/dynamodb-schema.md`](./docs/dynamodb-schema.md). PK prefixes in use:
+One table for Better Auth AND the Slack agent. PK/SK + GSI1 + TTL. Keys are built via `keys.*` / `gsi1.*` in `src/lib/dynamodb.ts`. PK prefixes in use:
 
 - **Auth**: `USER#`, `SESSION#`, `ACCOUNT#`, `VERIFICATION#` (SK=`META`).
 - **Slack**: `SLACK_APP#`, `SLACK_DEDUP#`, `SLACK_DONE#`, `SLACK_THREAD#` (SK=`META`).
@@ -137,7 +137,7 @@ Always build keys via `keys.*` and `gsi1.*`. Never hand-roll `PK`/`SK` strings �
 
 ## Deployment
 
-Target: **AWS Amplify Hosting (SSR)**. Full guide in [`docs/amplify-deploy.md`](./docs/amplify-deploy.md). Key constraints:
+Target: **AWS Amplify Hosting (SSR)**. Key constraints:
 
 - IAM role on the SSR compute role (no static AWS keys in env).
 - IAM must grant SSM (GetParameters / PutParameter / DeleteParameter on `SLACK_SSM_PREFIX/*`) AND DynamoDB.
@@ -146,7 +146,7 @@ Target: **AWS Amplify Hosting (SSR)**. Full guide in [`docs/amplify-deploy.md`](
 
 ## Common gotchas
 
-- **`after()` on Amplify SSR**: confirm via CloudWatch on first deploy that the post-response work runs (see `docs/slack-bot.md` verification steps). The whole agent design rides on this.
+- **`after()` on Amplify SSR**: confirm via CloudWatch on first deploy that the post-response work runs (`slack.agent.start` → `slack.agent.done` appear after the HTTP 200). The whole agent design rides on this. See [`docs/roadmap.md`](./docs/roadmap.md) §9.
 - **Slack signing**: do NOT read JSON via Next's helpers before signing verification — the HMAC is computed over the exact bytes Slack sent, not a parse/stringify round-trip.
 - **Slack file Authorization leak**: only files*.slack.com get the bot token. Profile-image hosts (`avatars.slack-edge.com`, `secure.gravatar.com`) are public CDN — sending the token would leak it via redirects. The Slack-file fetcher always sets `redirect: "manual"`.
 - **`pnpm install`** may prompt to re-create `node_modules` after `package.json` changes — normal pnpm behavior.

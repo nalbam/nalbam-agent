@@ -52,7 +52,7 @@ If you deploy this project:
 
 1. **Rotate** `BETTER_AUTH_SECRET` and any AWS credentials before the first deploy — never reuse example values.
 2. Set `TRUSTED_ORIGINS` for every production origin you serve from.
-3. Restrict the IAM role attached to your Amplify SSR compute role to the minimum DynamoDB + SSM (+ optional Bedrock + SES) actions documented in [`docs/amplify-deploy.md`](./docs/amplify-deploy.md). In particular, scope `ssm:*Parameter*` ARNs to your `SLACK_SSM_PREFIX`.
+3. Restrict the IAM role attached to your Amplify SSR compute role to the minimum DynamoDB + SSM (+ optional Bedrock + SES) actions — scoped to your table and its GSI. In particular, scope `ssm:*Parameter*` ARNs to your `SLACK_SSM_PREFIX`.
 4. Enable encryption at rest on your DynamoDB table (default for new tables; verify on imports).
 5. Use SSM SecureString (KMS) for per-app `signing_secret` and `bot_token` — never put them in env vars or DynamoDB.
 6. **Rotate Slack secrets immediately if a token leaks.** `pnpm slack-apps register` overwrites both SSM parameters in place; the next request picks up the new values within the SSM cache TTL (default 5 min). Force-invalidate via `pnpm slack-apps delete` followed by `register` if you need to be sure.
