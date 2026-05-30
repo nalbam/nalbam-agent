@@ -12,8 +12,7 @@
  * The language directive is re-emphasized at the very end so the model does
  * not drift even when a persona is written in a different language.
  *
- * Note: original lambda-gurumi-bot had a 6th layer for user memory. That layer
- * is intentionally omitted (memory feature not migrated in this iteration).
+ * Note: there is no user-memory layer — the memory feature is not implemented.
  */
 
 const TASK_RULES = `You are an assistant for Slack mention requests. Plan work, call tools when needed, and provide concise helpful answers. When multiple independent tools are required, emit their tool_calls in parallel within a single turn instead of running them one-by-one. If a tool returns ok:false, tell the user briefly what failed (one short line) and, when it makes sense, suggest an alternative — do not retry blindly with the same arguments and do not fabricate a result.

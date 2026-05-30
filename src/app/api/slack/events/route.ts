@@ -12,9 +12,8 @@
  *      `api_app_id`.
  *   4. Verify the Slack signature against the *raw* request bytes.
  *   5. Hand the event off to `after()` so the agent runs on Lambda's
- *      remaining budget AFTER the 200 has been returned — this is the
- *      key mechanism that replaces the original receiver/worker
- *      self-invoke pattern.
+ *      remaining budget AFTER the 200 has been returned — the ack stays
+ *      within Slack's 3s budget while the agent keeps working.
  *
  * IMPORTANT: do NOT read JSON via Next's helpers before signing
  * verification — the HMAC is computed over the exact bytes Slack sent,

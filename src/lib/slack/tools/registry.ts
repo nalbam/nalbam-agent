@@ -5,8 +5,8 @@
  * values, grouped into a dict keyed by tool name and passed straight to
  * `streamText({ tools })`.
  *
- * PR3 wires in time / web / search / Slack tools. Image generation tools
- * (generate_image / edit_image / attach_image_from_url) land in PR4.
+ * The registry bundles the time / web / search / Slack / image tools into
+ * one dict for `streamText`.
  *
  * Each tool's `execute` reads shared per-request state (Slack client,
  * channel, thread, user, settings) via the `ToolContext` passed into the

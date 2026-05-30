@@ -340,7 +340,7 @@ export const fetchWebpageTool = (): Tool =>
       }
 
       if (!content) {
-        // Belt-and-suspenders re-validate before raw — mirrors original.
+        // Belt-and-suspenders re-validate before the raw fetch.
         await validatePublicHttpsUrl(url);
         try {
           const raw = await rawFetch(url, env.MAX_WEB_BYTES);

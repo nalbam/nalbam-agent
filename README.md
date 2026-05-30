@@ -164,7 +164,7 @@ Documented exhaustively in [`.env.example`](./.env.example). Minimum to boot the
 Useful additions:
 
 - `LLM_PROVIDER` / `LLM_MODEL` (`openai` default; `bedrock` requires the IAM statement in [`docs/amplify-deploy.md`](./docs/amplify-deploy.md))
-- `IMAGE_PROVIDER` / `IMAGE_MODEL` (image generation is OpenAI-only in this iteration)
+- `IMAGE_PROVIDER` / `IMAGE_MODEL` (image generation is OpenAI-only)
 - `TAVILY_API_KEY` — enables Tavily for web/image search (otherwise DDG fallback for `search_web`, error for `search_images`)
 - `ALLOWED_CHANNEL_IDS` / `ALLOWED_USER_IDS` — global allowlists (CSV). Per-app overrides via the `/slack/[appId]` UI take precedence.
 - `SYSTEM_MESSAGE` (global only) / `PERSONA_MESSAGE` (per-app override available)
@@ -181,7 +181,7 @@ Full key map in [`docs/dynamodb-schema.md`](./docs/dynamodb-schema.md). Highligh
 
 ## Deploying to AWS Amplify
 
-[`docs/amplify-deploy.md`](./docs/amplify-deploy.md) has the complete guide including the IAM policy (DynamoDB + SSM + optional Bedrock + optional SES) and the full env-var table. The first thing to verify on a fresh deploy is that **Next.js 16's `after()` callback runs to completion on Amplify SSR** — it's the load-bearing primitive that replaces the original lambda-gurumi-bot's receiver/worker self-invoke. The verification steps are in [`docs/slack-bot.md`](./docs/slack-bot.md#verifying-after-works-on-your-amplify-deployment).
+[`docs/amplify-deploy.md`](./docs/amplify-deploy.md) has the complete guide including the IAM policy (DynamoDB + SSM + optional Bedrock + optional SES) and the full env-var table. The first thing to verify on a fresh deploy is that **Next.js 16's `after()` callback runs to completion on Amplify SSR** — it's the load-bearing primitive the agent design depends on: the route returns 200 immediately and the agent keeps streaming from the deferred callback. The verification steps are in [`docs/slack-bot.md`](./docs/slack-bot.md#verifying-after-works-on-your-amplify-deployment).
 
 ## Operations
 

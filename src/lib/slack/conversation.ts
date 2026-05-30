@@ -7,8 +7,7 @@
  * keeps a long-running thread from blowing the token budget on every turn.
  *
  * The TTL attribute makes DynamoDB sweep expired rows automatically; the
- * default 1h matches the original lambda-gurumi-bot behavior. Operators
- * shouldn't depend on history older than a session.
+ * default is 1h. Operators shouldn't depend on history older than a session.
  *
  * Concurrency: writes use optimistic concurrency control via a `version`
  * column. `loadThreadHistory` returns the version it observed so callers
@@ -165,8 +164,7 @@ export const saveThreadHistory = async (
 };
 
 const ARRAY_BRACKETS = 2;
-// JSON.stringify uses `,` (no space) by default — 1 char. Python's json.dumps
-// uses `, ` so the original lambda-gurumi-bot port used 2.
+// JSON.stringify joins array items with `,` (no space) — 1 char per separator.
 const ITEM_SEPARATOR = 1;
 
 /**

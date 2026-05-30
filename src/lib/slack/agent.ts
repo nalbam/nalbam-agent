@@ -3,8 +3,8 @@
  *
  * Wraps `streamText` so the route handler can drive a multi-step agent
  * with native function calling, content streaming to Slack, and uniform
- * usage / step accounting. `stopWhen: stepCountIs(N)` enforces the same
- * 6-hop cap the original lambda-gurumi-bot used.
+ * usage / step accounting. `stopWhen: stepCountIs(N)` enforces the agent's
+ * hop cap (`AGENT_MAX_STEPS`, default 6).
  *
  * Tools are passed in as a dict; when empty, we omit the `tools` arg
  * entirely so the LLM doesn't see a stale schema with no callbacks.
@@ -12,8 +12,7 @@
  * Forced-compose: when `stepCountIs(N)` halts on a turn that only
  * produced tool-calls (no final text), we issue one extra `generateText`
  * call with the tool conversation history and an explicit "no more tools"
- * directive so the user actually gets an answer. Mirrors the original
- * lambda-gurumi-bot `_compose_without_tools` behavior.
+ * directive so the user actually gets an answer.
  */
 import {
   generateText,

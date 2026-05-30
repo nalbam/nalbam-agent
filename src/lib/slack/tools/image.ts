@@ -3,17 +3,14 @@
  *
  *   - generate_image:           generate from a text prompt → upload to thread.
  *   - attach_image_from_url:    download a public web image → upload to thread.
- *   - edit_image:               provider-dependent multipart edit. Stubbed
- *                               with a clear error in PR4; revisit when ai-sdk
- *                               exposes a stable edit interface or when we
- *                               wire the OpenAI `/v1/images/edits` endpoint
- *                               directly.
+ *   - edit_image:               edit existing image(s) with a prompt via
+ *                               OpenAI's `/v1/images/edits` multipart
+ *                               endpoint → upload to thread.
  *
  * Generation uses Vercel AI SDK's `experimental_generateImage`. OpenAI is
- * the only supported provider in this iteration; Bedrock image generation
- * (Nova Canvas / Titan Image) currently has no ai-sdk wrapper, so we
- * surface an explicit "unsupported" error rather than silently producing
- * a stub image.
+ * the only supported provider; Bedrock image generation (Nova Canvas /
+ * Titan Image) has no ai-sdk wrapper, so we surface an explicit
+ * "unsupported" error rather than silently producing a stub image.
  *
  * Security for `attach_image_from_url`:
  *   - HTTPS only.
@@ -233,14 +230,14 @@ const generateImageSchema = z.object({
 export const generateImageTool = (ctx: ToolContext): Tool =>
   tool({
     description:
-      "Generate an image from a prompt and upload it to the Slack thread. Returns the permalink. OpenAI provider only in this iteration — Bedrock image generation (Nova Canvas / Titan Image) is not yet supported and the tool surfaces an error for that case.",
+      "Generate an image from a prompt and upload it to the Slack thread. Returns the permalink. OpenAI provider only — Bedrock image generation (Nova Canvas / Titan Image) is not supported and the tool surfaces an error for that case.",
     inputSchema: generateImageSchema,
     execute: async ({ prompt }) => {
       const env = getServerEnv();
       const provider = env.IMAGE_PROVIDER ?? env.LLM_PROVIDER;
       if (provider !== "openai") {
         throw new Error(
-          `generate_image: provider '${provider}' not supported yet (only openai). Fall back to a text description for the user.`,
+          `generate_image: provider '${provider}' not supported (only openai). Fall back to a text description for the user.`,
         );
       }
       const model = openai.image(env.IMAGE_MODEL);
@@ -440,14 +437,14 @@ const collectInputImages = async (
 export const editImageTool = (ctx: ToolContext): Tool =>
   tool({
     description:
-      "Edit existing image(s) with a text prompt and upload the result to the Slack thread. By default uses images attached to the current Slack mention. To edit images from earlier in the thread, first call fetch_thread_history, then pass the desired `files[*].url_private_download` values via `urls`. To edit a user's profile image, first call fetch_user_profile and pass the returned `image_url` via `urls`. URLs must be on files*.slack.com or a Slack profile image host (avatars.slack-edge.com, a.slack-edge.com, secure.gravatar.com). Use this — not generate_image — whenever the user wants to transform, restyle, or modify an existing image. Currently OpenAI-only; returns an error when IMAGE_PROVIDER=bedrock so the agent can fall back to a text reply or generate_image.",
+      "Edit existing image(s) with a text prompt and upload the result to the Slack thread. By default uses images attached to the current Slack mention. To edit images from earlier in the thread, first call fetch_thread_history, then pass the desired `files[*].url_private_download` values via `urls`. To edit a user's profile image, first call fetch_user_profile and pass the returned `image_url` via `urls`. URLs must be on files*.slack.com or a Slack profile image host (avatars.slack-edge.com, a.slack-edge.com, secure.gravatar.com). Use this — not generate_image — whenever the user wants to transform, restyle, or modify an existing image. OpenAI-only; returns an error when IMAGE_PROVIDER=bedrock so the agent can fall back to a text reply or generate_image.",
     inputSchema: editImageSchema,
     execute: async ({ prompt, urls, limit }) => {
       const env = getServerEnv();
       const provider = env.IMAGE_PROVIDER ?? env.LLM_PROVIDER;
       if (provider !== "openai") {
         throw new Error(
-          `edit_image: provider '${provider}' not supported yet (only openai). Fall back to a text description or generate_image.`,
+          `edit_image: provider '${provider}' not supported (only openai). Fall back to a text description or generate_image.`,
         );
       }
       if (!env.OPENAI_API_KEY) {

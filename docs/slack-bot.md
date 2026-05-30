@@ -55,7 +55,7 @@ A single deployment serves arbitrarily many Slack apps. Each app is identified b
 - **SSM Parameter Store, SecureString**: `${SLACK_SSM_PREFIX}/{api_app_id}/signing_secret` and `.../bot_token`. These never live in DynamoDB or env vars.
 - **DynamoDB**: a single row at `PK=SLACK_APP#{api_app_id}, SK=META` holds `team_id`, `team_name`, `bot_user_id`, `bot_user_name`, optional `displayName`, optional ACL overrides (`allowedChannelIds`, `allowedUserIds`), and an optional `personaMessage`. The `GSI1PK=SLACK_APP:TEAM#{team_id}` index lets the web UI search by team.
 
-ACL resolution mirrors the original Python implementation: the per-app attribute, when present, ALWAYS wins — including the meaningful empty values (`[]` = "this app explicitly allows all", `""` = "this app has no persona"). Absent attributes fall back to the matching env CSV.
+ACL resolution: the per-app attribute, when present, ALWAYS wins — including the meaningful empty values (`[]` = "this app explicitly allows all", `""` = "this app has no persona"). Absent attributes fall back to the matching env CSV.
 
 ## Provisioning a Slack app
 
@@ -137,20 +137,20 @@ If you see `slack.route.*` but no `slack.agent.*` logs **and** no reply, `after(
 
 - Push the dispatch into Upstash QStash and trigger a follow-up `/api/slack/worker` endpoint (the codebase already has Upstash credentials wired up via `@upstash/redis`).
 - Provision an SQS queue + a separate worker Lambda, with the receiver writing the event and the worker reading it.
-- Add a self-invoke (Lambda → Lambda via the AWS SDK) much like the original lambda-gurumi-bot did — the trickiest path because Amplify hides the SSR function ARN.
+- Add a self-invoke (Lambda → Lambda via the AWS SDK) — the trickiest path because Amplify hides the SSR function ARN.
 
 ## Operational notes
 
 - **Slack retries** (`X-Slack-Retry-Num` header) are short-circuited with a plain 200; combined with the `SLACK_DONE#…` long-TTL marker, the agent never re-runs on a retried delivery.
 - **DynamoDB TTL** sweeps `SLACK_DEDUP#…` (5 min) and `SLACK_THREAD#…` (1 h). `SLACK_APP#…` and `SLACK_DONE#…` (1 h) too — operator UI and CLI commands write fresh rows on each interaction.
 - **Multi-app warm-container caching**: `getSlackCredentials` caches per `api_app_id` for 5 min by default. `invalidateSlackCredentials` is called whenever the web UI / CLI updates secrets so rotations take effect immediately on the container that handled the change. Other warm containers pick up the change within the TTL window.
-- **`:x:` reaction**: deletes a bot reply when the reactor is the original thread asker OR appears in the effective `ALLOWED_USER_IDS`. Original-asker lookup uses `conversations.history(latest=msg_ts, inclusive=true, limit=1)` to find the parent ts, then `conversations.replies(ts=parent_ts, limit=1)` for the asker — the original Python comment about Slack's `oldest==latest` quirk still applies.
-- **`edit_image`** calls OpenAI's `/v1/images/edits` multipart endpoint directly (the `@ai-sdk/openai` provider doesn't expose an edit primitive yet). When `IMAGE_PROVIDER=bedrock`, the tool surfaces a structured "unsupported" error so the agent can pivot to `generate_image` or a text reply.
+- **`:x:` reaction**: deletes a bot reply when the reactor is the original thread asker OR appears in the effective `ALLOWED_USER_IDS`. Original-asker lookup uses `conversations.history(latest=msg_ts, inclusive=true, limit=1)` to find the parent ts, then `conversations.replies(ts=parent_ts, limit=1)` for the asker.
+- **`edit_image`** calls OpenAI's `/v1/images/edits` multipart endpoint directly (the `@ai-sdk/openai` provider doesn't expose an edit primitive). When `IMAGE_PROVIDER=bedrock`, the tool surfaces a structured "unsupported" error so the agent can pivot to `generate_image` or a text reply.
 
 ## Known limitations
 
-- Image generation + edit are OpenAI-only. Bedrock (Nova Canvas / Titan Image) needs a follow-up PR that either uses the AWS SDK directly or waits for a stable ai-sdk wrapper. Both tools surface `provider 'bedrock' not supported yet` when `IMAGE_PROVIDER=bedrock`.
-- User memory (`remember` / `forget` tools from the original Python bot) is not migrated — the `mem:{user_id}` prefix is intentionally reserved for a future PR.
+- Image generation + edit are OpenAI-only. Bedrock (Nova Canvas / Titan Image) is unsupported — there is no stable ai-sdk wrapper for it, and both tools surface a `provider 'bedrock' not supported (only openai)` error when `IMAGE_PROVIDER=bedrock`.
+- There is no user-memory feature (`remember` / `forget`). The `mem:{user_id}` key prefix is reserved for it.
 
 ## Operator allowlist
 

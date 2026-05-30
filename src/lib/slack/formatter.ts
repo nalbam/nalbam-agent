@@ -16,8 +16,6 @@
  *      ``` `+`\n` so both chunks render as balanced fences in Slack.
  *   4. When no `\n\n` fits, fall back to a sentence boundary (.!? + WS),
  *      then to a single `\n`, then to a hard slice.
- *
- * This is a TS port of the original lambda-gurumi-bot `MessageFormatter`.
  */
 
 const CODE_FENCE = "```";
