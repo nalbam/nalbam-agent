@@ -9,8 +9,11 @@
 - 구현 목표(영역별 명세 + 순서): [`docs/roadmap.md`](./docs/roadmap.md)
 
 > **현재 상태**: 이 설계를 향한 **그린필드 골격**이다. 정규화 타입, 채널/도구/provider 레지스트리,
-> 코어 파이프라인, Better Auth, DynamoDB 기반 공통 인프라는 존재하지만 실제 에이전트 응답 경로는 아직
-> 스텁이다. Slack은 첫 채널 어댑터이되 `ingest`/responder/capability/credentials 구현이 남아 있다.
+> 코어 파이프라인, DynamoDB KV 기반 dedup/throttle, deny-by-default ACL, 메모리 골격, Better Auth,
+> DynamoDB 기반 공통 인프라, 토큰 기반 HTTP API 채널, Slack Events API 검증·정규화, AI SDK 기반
+> 에이전트 응답 경로와 `StorageProvider(kv+doc+blob)` factory는 존재한다. Slack responder/capability,
+> API 채널의 S3-backed media upload capability는 존재한다. Web UI/Telegram, 운영용 tenant metadata/doc
+> wiring은 남아 있다.
 > [`docs/roadmap.md`](./docs/roadmap.md)의 "MVP 수용 기준"과 "구현 순서"대로 코어를 채워간다.
 
 ## 제품 원칙
@@ -58,15 +61,15 @@ flowchart LR
 
 - Node.js 22 · pnpm 11 · TypeScript `strict + noUncheckedIndexedAccess`
 - Next.js 16 (App Router) · React 19
-- Vercel AI SDK 6 (`@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`)
-- Better Auth (operator UI) · DynamoDB 단일 테이블 + Redis/Valkey(KV)
+- Vercel AI SDK 6 (`@ai-sdk/openai` + `@ai-sdk/amazon-bedrock` + OpenAI-compatible provider)
+- Better Auth (operator UI) · S3 BlobStore + DynamoDB 단일 테이블(`doc` + `kv`)
 - Tailwind v4 + shadcn/ui (`new-york`) · Vitest
-- `@slack/web-api` · `unpdf` · `@aws-sdk/client-ssm` — Slack 채널·문서 도구·자격증명 구현(예정)용으로 의존성에 포함
+- `@slack/web-api` · `unpdf` · `@aws-sdk/client-ssm` — Slack 채널·문서 도구·자격증명 구현용 의존성
 
 ## 빠른 시작
 
-현재는 **골격 단계**다 — 인터페이스와 스텁으로 `typecheck`·`build`·`test`가 통과하지만 에이전트는
-아직 동작하지 않는다(전 경로 스텁). 로컬 실행 시 AWS 자격증명이 로컬 체인
+현재는 **MVP 구현 중**이다 — HTTP API 채널은 실제 LLM runtime까지 흐르고, Slack은 Events API 검증·정규화와
+`chat.postMessage`/`chat.update` 기반 최종 회신 및 capability 일부가 동작한다. 로컬 실행 시 AWS 자격증명이 로컬 체인
 (`aws configure` / `aws sso login` / `AWS_PROFILE`)에 있어야 한다 — dev 서버가 실제 DynamoDB를 사용한다.
 
 ```bash
@@ -74,13 +77,16 @@ cp .env.example .env.local
 # 최소: BETTER_AUTH_SECRET (openssl rand -base64 32), AWS_REGION, DYNAMODB_TABLE_NAME
 #       (OPENAI_API_KEY는 LLM provider 사용 시)
 
-docker compose up -d         # Valkey (Better Auth secondaryStorage용 KV)
 pnpm install
-pnpm db:init                 # DynamoDB 테이블 + GSI1 + TTL 생성
+pnpm db:init                 # DynamoDB 테이블 + GSI1 + TTL 생성 (실제 AWS)
 pnpm dev                     # http://localhost:3000
 ```
 
-채널 어댑터·도구·메모리·저장소는 구현 예정 — [`docs/roadmap.md`](./docs/roadmap.md) "구현 순서" 참고.
+로컬 dev는 실제 AWS DynamoDB를 사용한다. DynamoDB Local로 통합 테스트를 돌리려면
+`docker compose --profile test up -d` 후 `DYNAMODB_ENDPOINT`를 설정한다.
+
+Web UI/Telegram, 추가 도구, 운영용 메모리/저장소 wiring은 구현 예정 — [`docs/roadmap.md`](./docs/roadmap.md)
+"구현 순서" 참고.
 
 ## 스크립트
 
@@ -98,9 +104,9 @@ pnpm dev                     # http://localhost:3000
 ```
 src/
 ├── core/              도메인 모델 · runConversation 파이프라인 · dedup/acl/throttle 계약 · deps
-├── channels/          ChannelAdapter 레지스트리 + slack/ (스텁)
-├── agent/             runtime(스텁) · system-prompt · providers/(openai·bedrock) · tools/
-├── storage/           StorageProvider(kv+doc) + memory-kv
+├── channels/          ChannelAdapter 레지스트리 + slack/ + api/
+├── agent/             AI SDK runtime · system-prompt · providers/(openai·bedrock·compatible) · tools/
+├── storage/           StorageProvider(kv+doc+blob) + dynamodb-kv/doc + s3-blob (+ in-memory 테스트 대체)
 ├── memory/            MemoryStore (단기·장기·검색)
 ├── credentials/       CredentialProvider
 ├── observability/     요청 스코프 로거
@@ -124,7 +130,12 @@ scripts/                           db:init / db:delete / copy-fonts
 
 - `BETTER_AUTH_SECRET` (≥ 32자) — operator UI 세션
 - `AWS_REGION`, `DYNAMODB_TABLE_NAME` — DynamoDB
+- `S3_BUCKET_NAME`, `S3_PREFIX` — S3 blob store
 - `OPENAI_API_KEY` — `LLM_PROVIDER=openai`(기본) 시 필수
+- `XAI_API_KEY`/`XAI_BASE_URL`, `GEMINI_API_KEY`/`GEMINI_BASE_URL`,
+  `CLAUDE_API_KEY`/`CLAUDE_BASE_URL` — OpenAI-compatible provider 사용 시
+- `API_CHANNEL_TOKENS` — HTTP API 채널 사용 시 `tenant_id:sha256_hex_token` 목록
+- `AGENT_TENANTS_JSON` — 운영용 tenant backend 전까지 사용하는 정적 tenant metadata
 
 `src/lib/env.ts`가 모든 변수를 zod로 검증하고 실패 시 다중 줄 요약으로 fail-fast.
 

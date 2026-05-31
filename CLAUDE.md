@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **`nalbam-agent`** — the goal is a **multi-tenant, multi-channel, plugin-extensible AI agent** (design: [`docs/architecture.md`](./docs/architecture.md); implementation goals: [`docs/roadmap.md`](./docs/roadmap.md)).
 
-**The current code is a greenfield skeleton** of that design — interfaces and not-implemented stubs that compile, type-check, and pass a small contract test suite. It does **not** yet run a real agent. The previous Slack-only implementation was removed; Slack is now just the first channel adapter, currently a stub. Build real behavior by filling the skeleton per `docs/roadmap.md` "구현 순서" — **without modifying the core for a new channel/tool/provider**.
+**The code is a working MVP-in-progress** built on that design — no longer a pure skeleton. The transport-agnostic core runs end to end: the HTTP API channel flows to a real LLM provider, and the Slack channel verifies/normalizes Events API webhooks, replies via a `chat.postMessage`/`chat.update` responder, and exposes its capabilities. Many target features remain (see snapshot). Keep building per `docs/roadmap.md` "구현 순서" — **without modifying the core for a new channel/tool/provider**.
 
-Current implementation snapshot:
-- Implemented contracts: normalized core types, `ChannelAdapter`/`Responder`/`Capabilities`, channel/tool/provider registries, `runConversation` skeleton, in-memory KV, Better Auth + DynamoDB infrastructure.
-- Stubs: Slack `ingest`/responder/capabilities/credentials, `AgentRuntime`, tenant/dedup/ACL/throttle/memory wiring in `buildPipelineDeps()`, connection worker.
-- Missing channels/tools: Web UI, token HTTP API, Telegram, web/search/document/image tools, DynamoDB-backed agent storage, real credential provider.
+Current implementation snapshot (roadmap "현재 구현 스냅샷" is the source of truth):
+- Implemented: normalized core types, channel/tool/provider registries, `runConversation` pipeline with real KV-backed dedup/throttle + deny-by-default ACL + static tenant resolver; `aiSdkAgentRuntime` (`streamText` + delta streaming + step/token accounting); openai/bedrock/openai-compatible providers; Slack adapter (HMAC verify, normalize, responder, `fetchHistory`/`downloadAttachment`/`uploadMedia`/`fetchUserProfile` capabilities) + SSM credential provider; token-based HTTP API channel (SHA-256 token, S3 `uploadMedia`); `StorageProvider` (DynamoDB `kv`+`doc`, S3-or-memory `blob`); `get_current_time` + `save_text_artifact` tools; Better Auth + DynamoDB infrastructure (secondaryStorage also on DynamoDB KV).
+- Partial/stubs: forced-compose (hardcoded off), connection-mode worker (`src/worker/socket-worker.ts` throws), in-memory memory store (conversation/user memory not yet on the DynamoDB `doc` backend), search memory.
+- Missing: Web UI / Telegram channels; web/search/document/image/execute/read/edit/delegate/todo tools; generic per-channel `CredentialProvider` + cache/rotation; operator UI.
 
-MVP acceptance target: Slack webhook must verify and normalize real events, run through KV-backed dedup/throttle + deny-by-default ACL + memory, call a real LLM provider, and reply via Slack. Then add HTTP API as a second channel without touching `src/core`.
+MVP acceptance target (not yet fully met): the Slack webhook path through dedup/throttle/ACL/memory + a real LLM provider + Slack final reply, plus HTTP API as a second channel — all without touching `src/core`. See `docs/roadmap.md` "MVP 수용 기준".
 
 ## Commands
 
@@ -30,23 +30,22 @@ pnpm format             # Prettier write
 pnpm test               # Vitest run
 pnpm db:init            # provision DynamoDB table + GSI1 + TTL (real AWS by default)
 pnpm db:delete          # delete the table (refuses without ManagedBy=CloudManager tag)
-docker compose up -d    # Valkey only (KV)
-docker compose --profile test up -d   # also starts DynamoDB Local + admin UI
+docker compose --profile test up -d   # DynamoDB Local + admin UI (integration tests)
 ```
 
-`.env.local` minimum: `BETTER_AUTH_SECRET` (≥ 32 chars), `AWS_REGION`, `DYNAMODB_TABLE_NAME`, and `OPENAI_API_KEY` when `LLM_PROVIDER=openai`. Local AWS credentials (via `~/.aws/credentials`, `AWS_PROFILE`, or SSO) must be available — dev hits real DynamoDB by default. Add every new env var to **both** the zod schema in `src/lib/env.ts` and `.env.example`.
+`.env.local` minimum: `BETTER_AUTH_SECRET` (≥ 32 chars), `AWS_REGION`, `DYNAMODB_TABLE_NAME`, and `OPENAI_API_KEY` when `LLM_PROVIDER=openai`. Per channel: `S3_BUCKET_NAME` to enable the S3 blob backend (else in-memory), `API_CHANNEL_TOKENS` (`tenant_id:sha256_hex` list) for the HTTP API channel, `AGENT_TENANTS_JSON` for static tenant metadata until the operator/doc backend owns it. Local AWS credentials (via `~/.aws/credentials`, `AWS_PROFILE`, or SSO) must be available — dev hits real DynamoDB by default. Add every new env var to **both** the zod schema in `src/lib/env.ts` and `.env.example`.
 
 ## Stack & conventions
 
 - **Next.js 16 App Router** under `src/app/`, React 19, TypeScript `strict + noUncheckedIndexedAccess + noImplicitOverride`.
-- **Vercel AI SDK 6** (`ai` + `@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`) — the agent runtime will use `streamText` with `stopWhen: stepCountIs(...)`.
+- **Vercel AI SDK 6** (`ai` + `@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`; openai-compatible providers `xai`/`gemini`/`claude` via `createOpenAI`) — the agent runtime uses `streamText` with `stopWhen: stepCountIs(...)`.
 - **Path alias**: `@/*` → `./src/*`.
 - **Tailwind v4** via `@tailwindcss/postcss`. Tokens in `src/app/globals.css` under `@theme inline`. No `tailwind.config.*`.
 - **shadcn/ui** (`new-york`, base color `slate`) in `src/components/ui/`.
 - **Pretendard** fonts copied from `node_modules/pretendard` into `src/app/fonts/` by `scripts/copy-fonts.mjs` (postinstall). `next/font/local` needs a literal path, hence the copy.
-- Some deps (`@slack/web-api`, `unpdf`, `@aws-sdk/client-ssm`) are retained for the Slack channel + document tools that are not yet reimplemented.
+- `@slack/web-api` + `@aws-sdk/client-ssm` are used by the Slack channel (responder/capabilities + SSM credential provider); `@aws-sdk/client-s3` + `s3-request-presigner` back the S3 blob store; `unpdf` is retained for the document tool not yet implemented.
 
-## Architecture (greenfield skeleton)
+## Architecture
 
 Transport-agnostic core; channels/tools/providers/storage plug in behind interfaces. Data flow:
 
@@ -61,23 +60,24 @@ runConversation: dedup → tenant → ACL → throttle → context → agent →
 - `pipeline.ts` — `runConversation(msg, adapter, deps)`; cross-cutting flow. Keys scoped `{channel}:{tenantId}:…`.
 - `dedup.ts` / `acl.ts` / `throttle.ts` — service **interfaces** (`DedupService`, `AclPolicy`, `ThrottleService`).
 - `tenant.ts` — `TenantConfig` / `TenantResolver`. `errors.ts` — `NotImplementedError`.
-- `deps.ts` — `buildPipelineDeps()` wires **passthrough/no-op stub services** so the pipeline flows end to end. Replace with real services per roadmap.
+- `deps.ts` — `buildPipelineDeps()` wires **real services**: DynamoDB KV-backed dedup/throttle (`dedup-service.ts`/`throttle-service.ts`), deny-by-default `acl-policy.ts`, `AGENT_TENANTS_JSON`-backed `tenant-resolver.ts`, in-memory memory store (DynamoDB `doc` backend wiring pending), `StorageProvider`, and `aiSdkAgentRuntime`.
 
 ### `src/channels/` — channel adapters (plugin)
 - `types.ts` — `ChannelAdapter` (ingest / credentials / responder / capabilities / renderingRules), `Responder`, `Capabilities`, `RawIngress`, `IngestResult`, mode `webhook | connection | http`.
-- `registry.ts` — `defineChannel` / `getChannel` / `listChannels`. `index.ts` — side-effect registration of bundled adapters.
-- `slack/adapter.ts` — **stub** Slack adapter (`ingest` throws `NotImplementedError`; responder/capabilities are no-ops).
+- `registry.ts` — `defineChannel` / `getChannel` / `listChannels`. `index.ts` — side-effect registration of bundled adapters (`slack`, `api`).
+- `slack/adapter.ts` — Slack Events API adapter: HMAC signature verify + timestamp replay guard, mention/surface normalization, `chat.postMessage`/`chat.update` responder with chunking, and `fetchHistory`/`downloadAttachment`/`uploadMedia`/`fetchUserProfile` capabilities. `slack/credentials.ts` — `ssmSlackCredentialProvider` reads signing secret + bot token from SSM SecureString with TTL cache. (Socket Mode / connection adapter not yet.)
+- `api/adapter.ts` — token-based HTTP API channel: SHA-256 bearer-hash auth (constant-time), zod-validated normalization, synchronous responder, S3-backed `uploadMedia`.
 
 ### `src/agent/` — runtime, providers, tools
-- `runtime.ts` — `AgentRuntime` interface + `stubAgentRuntime` (returns an empty result). Real multi-step `streamText` loop + forced-compose lands later.
+- `runtime.ts` — `AgentRuntime` interface + `aiSdkAgentRuntime`: multi-step `streamText` loop with `stepCountIs`, delta streaming to the responder, step/token/tool-call accounting. Forced-compose is hardcoded off; `stubAgentRuntime` remains for tests.
 - `system-prompt.ts` — layered prompt; the adapter injects channel rendering rules.
-- `providers/` — `LlmProvider` registry (`defineProvider` / `getModel`) + `openai`/`bedrock` (these **work**).
-- `tools/` — `ToolDefinition` (+ `requires: Capability[]`), `registry.ts` `buildToolset(ctx)` registers a tool only when the channel provides every required capability. `channel-agnostic/time.ts` is the one working tool; the rest (web/search/attachments/profile/history/image) are to be added.
+- `providers/` — `LlmProvider` registry (`defineProvider` / `getModel`) + `openai`/`bedrock`/`openai-compatible` (`xai`/`gemini`/`claude`); all working.
+- `tools/` — `ToolDefinition` (+ `requires: Capability[]`), `registry.ts` `buildToolset(ctx)` registers a tool only when the channel provides every required capability. Implemented: `channel-agnostic/time.ts` (`get_current_time`) and `capability-bound/save-artifact.ts` (`save_text_artifact`, requires `uploadMedia`). The rest (web/search/attachments/profile/history/image/execute/edit/delegate/todo) are to be added.
 
 ### `src/storage/`, `src/memory/`, `src/credentials/`
-- `storage/types.ts` — `StorageProvider` (`KvStore` + `DocStore`). `storage/memory-kv.ts` — working in-memory KV (tests/dev). DynamoDB doc backend to be added (reuse `dynamodb-helpers.ts`).
-- `memory/types.ts` — `MemoryStore` (short-term conversation / long-term `mem:` / optional search). No impl yet.
-- `credentials/types.ts` — `CredentialProvider` (secrets in a secret manager, never in code/DB). No impl yet.
+- `storage/types.ts` — `StorageProvider` (`kv` + `doc` + `blob`). `provider.ts` factory: `kv`/`doc` are DynamoDB (`dynamodb-kv.ts`/`dynamodb-doc.ts`, single table; KV uses conditional `setNx` + atomic `ADD` + native TTL with lazy `expiresAt`), `blob` is `s3-blob.ts` when `S3_BUCKET_NAME` is set else `memory-blob.ts`. in-memory `kv`/`doc` (`memory-kv.ts`/`memory-doc.ts`) remain as test doubles.
+- `memory/types.ts` — `MemoryStore`. `memory-store.ts` implements in-memory short-term (conversation, char-budget trim) + long-term (`mem:`, `remember`/`forget`); search is interface-only. Operational backend + TTL/OCC to be added.
+- `credentials/types.ts` — generic `CredentialProvider` interface (no generic impl yet). The Slack channel ships its own `ssmSlackCredentialProvider` (SSM SecureString); secrets stay in the secret manager, never in code/DB.
 
 ### `src/observability/`, `src/worker/`
 - `observability/context.ts` — `requestLogger(fields)` over `logger.child`.
@@ -87,7 +87,7 @@ runConversation: dedup → tenant → ACL → throttle → context → agent →
 - `src/lib/env.ts` — zod-validated server/client env; `getServerEnv()` lazy + cached, fail-fast.
 - `src/lib/logger.ts` — JSON-line structured logger; `logger.child({...})` for request-scoped fields.
 - `src/lib/dynamodb.ts` + `dynamodb-helpers.ts` — single-table client + `keys.*`/`gsi1.*` + `getItem/putItem/deleteItem/queryGSI1/scanAll/updateItem`. Build keys via `keys.*`; `validateId`/`sanitizeKeyValue` are the only input sanitization.
-- `src/lib/auth*` — Better Auth (operator UI) with the DynamoDB adapter; `secondaryStorage` when Redis/Upstash is set. `src/lib/auth/operator.ts` gates the (future) operator UI on `OPERATOR_ALLOWED_EMAILS`.
+- `src/lib/auth*` — Better Auth (operator UI) with the DynamoDB adapter; `secondaryStorage` rides on the DynamoDB-backed KV store (`src/lib/auth/secondary-storage.ts`). `src/lib/auth/operator.ts` gates the (future) operator UI on `OPERATOR_ALLOWED_EMAILS`.
 - `src/lib/email.ts` — SES sender when `AWS_SES_FROM` is set, else console fallback.
 - `src/proxy.ts` — cheap session-cookie check on `/operator/*` (operator UI added later); real validation in `app/(protected)/layout.tsx`.
 - Next app shell: `layout/page/error/not-found/loading/manifest/sitemap/robots/opengraph`, `src/components/ui/`, `src/instrumentation.ts` (empty `register()` hook — wire Sentry/OTel/PostHog).
@@ -104,8 +104,8 @@ One table for Better Auth (`USER#`, `SESSION#`, `ACCOUNT#`, `VERIFICATION#`; the
 ## Deployment
 
 Target: **AWS Amplify Hosting (SSR)**. Webhook/http channels run on the SSR Lambda; connection-mode channels need the long-running `src/worker/`. Constraints:
-- IAM on the SSR compute role (no static AWS keys), granting DynamoDB (+ SSM for the Slack credential provider once implemented).
-- Upstash Redis REST for `secondaryStorage` / KV (no VPC).
+- IAM on the SSR compute role (no static AWS keys), granting DynamoDB, SSM (Slack credential provider), and S3 (blob store).
+- `secondaryStorage` and the agent KV both ride on DynamoDB — no separate Redis/KV infra or VPC.
 - `BETTER_AUTH_URL` + `TRUSTED_ORIGINS` must match the deployed origin.
 
 ## Common gotchas

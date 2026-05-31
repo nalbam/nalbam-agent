@@ -53,7 +53,7 @@
 └─────────────────────────────────────────────────────────────────────────────────────┘
    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
    │ Storage      │  │ Memory       │  │ Credentials  │  │ Observability│
-   │ (KV+doc)     │  │ (3-tier)     │  │ (per channel)│  │ (logs/trace) │
+   │ (KV+doc+blob)│  │ (3-tier)     │  │ (per channel)│  │ (logs/trace) │
    └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
 ```
 
@@ -225,10 +225,13 @@ interface Capabilities {
 interface StorageProvider {
   kv: KvStore;        // dedup, throttle, 캐시 (TTL 지원)
   doc: DocStore;      // 테넌트 메타, 대화 히스토리, 유저 메모리
+  blob: BlobStore;    // 첨부, 생성 파일, 도구 산출물 (S3)
 }
 ```
 
-기본 구현은 DynamoDB 단일 테이블(PK/SK + GSI + TTL) + Redis/Valkey(KV). 인터페이스 덕분에 테스트는 in-memory, 다른 배포는 다른 백엔드 가능.
+기본 구현은 S3(BlobStore) + DynamoDB 단일 테이블(`doc` + `kv`, PK/SK + GSI + TTL)이다 —
+`kv`는 conditional write(`setNx`)·atomic `ADD`(`incr`/`decr`)·native TTL과 읽기 시 `expiresAt`
+비교(lazy)로 구현한다. 테스트·로컬 대체용 in-memory 구현을 제공한다. 인터페이스 덕분에 다른 배포는 다른 백엔드 가능.
 
 ### 5.8 관측성
 
