@@ -15,6 +15,13 @@
 - **멀티테넌시** — 하나의 배포가 다수 테넌트(워크스페이스/봇/API 키)를 격리해 서빙한다.
 - **이식 가능한 실행 모델** — webhook(serverless) 채널과 상시 연결(long-running) 채널을 같은 코어로 굴린다.
 
+### 비목표
+
+- 채널별 봇을 각각 다른 코드베이스로 운영하지 않는다.
+- 채널 어댑터 안에 에이전트 정책, 메모리 정책, 도구 선택 로직을 넣지 않는다.
+- 초기 MVP에서 외부 npm 플러그인 discovery를 먼저 만들지 않는다. 번들 어댑터 2개 이상이 안정화된 뒤 확장한다.
+- 테넌트 시크릿을 `.env`, DynamoDB 일반 item, 로그에 저장하지 않는다.
+
 ## 2. 설계 원칙
 
 1. **코어는 transport를 모른다** — 코어는 정규화된 `InboundMessage`만 받고 `OutboundChunk`만 내보낸다. 채널 native 타입은 어댑터 경계를 넘지 않는다.
@@ -23,6 +30,7 @@
 4. **능력 기반 도구(capability-based tools)** — 도구는 채널이 제공하는 능력(`Capabilities`)에만 의존하고, 채널을 직접 알지 않는다.
 5. **deny-by-default 보안** — allowlist 미설정 시 거부. 시크릿은 채널/테넌트별로 격리.
 6. **모든 외부 경계는 명시적 계약(인터페이스)** — 채널·도구·LLM·저장소·자격증명 모두 인터페이스 뒤에 둔다.
+7. **구현 상태와 목표 설계를 분리** — 이 문서는 목표 설계다. 현재 구현 여부는 roadmap 체크리스트를 기준으로 판단한다.
 
 ## 3. 고수준 구조
 
@@ -76,6 +84,8 @@ interface OutboundChunk {
 ```
 
 `Tenant`·`Identity`는 채널별 의미를 코어로 흘리지 않도록 `tenantId`/`userId` 문자열로만 추상화한다.
+테넌트의 안정 식별자는 항상 `(channel, tenantId)` 조합이다. 예를 들어 Slack workspace, Telegram bot,
+HTTP API key issuer는 모두 다른 의미를 갖지만 코어 키는 동일한 형태를 쓴다.
 
 ## 5. 컴포넌트
 
@@ -118,6 +128,13 @@ interface Responder {
 - 로딩 우선순위: `src/channels/<name>/`(번들) → `channels/`(로컬 확장) → 외부 패키지(`package.json`의 `agent.channels` 필드, 후순위).
 - 코어는 레지스트리만 알고 구체 채널을 직접 import하지 않는다.
 
+**어댑터 구현 수용 기준**:
+
+- native 요청의 원본 바이트 기준 검증(HMAC/API token/replay guard)을 통과해야 `InboundMessage`를 만든다.
+- 멘션 제거, surface 판정, dedup key 생성, tenant/user/conversation 식별은 정규화 단계에서 끝낸다.
+- `Responder`는 채널 포맷 방언과 메시지 길이 제한을 처리한다. 코어는 Slack mrkdwn, Telegram HTML 등 native 포맷을 모른다.
+- capability가 없으면 빈 객체를 반환한다. 도구 레지스트리가 이를 기준으로 도구를 숨긴다.
+
 **실행 모델 차이 (중요)**:
 
 | mode | 예시 | 토폴로지 | 배포 |
@@ -146,6 +163,14 @@ async function runConversation(msg: InboundMessage, adapter: ChannelAdapter, dep
 ```
 
 dedup/throttle/conversation 키는 모두 `{channel}:{tenantId}:…`로 스코프되어 채널 간 충돌이 없다.
+
+파이프라인 불변식:
+
+- dedup 예약은 LLM 호출, 도구 호출, 외부 회신보다 먼저 수행한다.
+- ACL과 throttle 실패는 에이전트 런타임을 호출하지 않는다.
+- throttle lease는 에이전트 또는 responder 실패 시에도 해제한다.
+- `raw` payload는 adapter/debug 경계에만 머문다. 코어 판단에 사용하지 않는다.
+- persist는 회신 성공 이후 수행한다. 실패 재시도 정책이 필요한 채널은 responder 내부에서 처리한다.
 
 ### 5.3 에이전트 런타임
 
@@ -187,6 +212,13 @@ interface Capabilities {
 - `CredentialProvider` per channel — Slack=서명 시크릿+bot token(SSM), Telegram=bot token, API=발급 토큰 해시. 시크릿은 코드/DB가 아닌 시크릿 매니저(SSM 등)에 격리.
 - 캐시 + 네거티브 캐시, 회전 시 즉시 무효화.
 
+테넌트 경계:
+
+- 모든 key prefix는 `{channel}:{tenantId}`를 포함한다.
+- user memory는 `mem:{channel}:{tenantId}:{userId}`로 격리한다.
+- channel credential lookup은 `(channel, tenantId, credential kind)`로만 수행한다.
+- operator UI는 테넌트 설정을 관리할 수 있지만 사용자 대화 세션 권한과 분리한다.
+
 ### 5.7 저장소 추상화
 
 ```ts
@@ -218,12 +250,21 @@ interface StorageProvider {
 
 원칙: **새 채널/도구를 추가할 때 코어 코드를 수정하지 않는다.** 파일 추가 + 레지스트리 등록뿐.
 
+플러그인 호환성 규칙:
+
+- 플러그인은 코어 타입(`InboundMessage`, `OutboundChunk`, `Capabilities`)에만 의존한다.
+- 플러그인은 다른 채널 플러그인을 import하지 않는다.
+- 플러그인 초기화는 부작용을 최소화한다. 네트워크 연결과 credential fetch는 요청 처리 시점까지 지연한다.
+- 외부 플러그인은 semver와 peer dependency 범위를 명시하고, 로딩 실패가 전체 앱 부팅 실패로 번지지 않게 격리한다.
+
 ## 7. 보안
 
 - 채널 검증: webhook 서명(Slack HMAC), API 토큰 검증, replay guard.
 - deny-by-default allowlist(채널×테넌트), operator 권한 분리.
 - 시크릿 격리(시크릿 매니저), 로그/에러 redaction.
 - 도구 fetch는 SSRF 가드 + redirect 거부 + 바이트 cap. 토큰은 신뢰 호스트에만 전송.
+- 멀티테넌트 데이터 접근은 저장소 계층에서 key builder를 통해 강제한다. 호출자가 raw PK/SK를 조립하지 않는다.
+- 외부 도구 결과는 LLM 컨텍스트에 넣기 전에 크기 제한, MIME 검증, 텍스트 정규화를 거친다.
 
 ## 8. 점진적 구축 순서 (그린필드라도 단계적으로)
 
@@ -234,3 +275,14 @@ interface StorageProvider {
 5. connection 모드 채널 = Telegram 또는 Slack Socket Mode(long-running worker). 검증: worker가 같은 코어 호출.
 6. 도구 capability 분리 + 유저 장기 메모리 + (선택) 검색 메모리.
 7. 외부 npm 플러그인 discovery는 내부 어댑터 2개 이상 안정화 후.
+
+## 9. MVP 수용 기준
+
+운영 가능한 첫 버전은 아래를 모두 만족해야 한다.
+
+- Slack webhook 요청을 서명 검증 후 `InboundMessage`로 정규화한다.
+- `runConversation`이 실제 KV-backed dedup/throttle, tenant resolver, ACL, memory store를 사용한다.
+- OpenAI 또는 Bedrock provider로 실제 텍스트 응답을 생성하고 Slack responder가 최종 회신한다.
+- 같은 코어로 HTTP API 채널을 추가할 때 `src/core` 수정이 없다.
+- 테넌트별 credential은 SSM SecureString 등 시크릿 매니저에서 읽고, 로그에 노출하지 않는다.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, 핵심 채널 ingest/responder 테스트가 통과한다.

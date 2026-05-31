@@ -8,9 +8,19 @@
 - 목표 설계(계층·인터페이스·플러그인 프로토콜·실행 모델): [`docs/architecture.md`](./docs/architecture.md)
 - 구현 목표(영역별 명세 + 순서): [`docs/roadmap.md`](./docs/roadmap.md)
 
-> **현재 상태**: 이 설계를 향한 **그린필드 골격**이다 — 인터페이스와 스텁이 `typecheck`·`build`·`test`를
-> 통과하지만 실제 에이전트는 아직 동작하지 않는다. Slack은 첫 채널 어댑터이되 현재는 스텁이다.
-> [`docs/roadmap.md`](./docs/roadmap.md) "구현 순서"대로 코어를 채워간다.
+> **현재 상태**: 이 설계를 향한 **그린필드 골격**이다. 정규화 타입, 채널/도구/provider 레지스트리,
+> 코어 파이프라인, Better Auth, DynamoDB 기반 공통 인프라는 존재하지만 실제 에이전트 응답 경로는 아직
+> 스텁이다. Slack은 첫 채널 어댑터이되 `ingest`/responder/capability/credentials 구현이 남아 있다.
+> [`docs/roadmap.md`](./docs/roadmap.md)의 "MVP 수용 기준"과 "구현 순서"대로 코어를 채워간다.
+
+## 제품 원칙
+
+- **Tenant isolation first** — 모든 저장소 키, rate limit, dedup, 메모리, 자격증명은
+  `{channel}:{tenantId}` 스코프를 가진다.
+- **One core, many transports** — webhook, HTTP, connection 채널은 같은 `runConversation`을 호출한다.
+- **Capabilities over channel checks** — 도구는 Slack/Telegram 같은 채널명을 보지 않고 `Capabilities`만 본다.
+- **Plugins at the edge** — 새 채널·도구·LLM provider·저장소 추가는 인터페이스 구현과 등록으로 끝나야 한다.
+- **Secure by default** — 채널 검증, replay guard, allowlist, SSRF 방어, 시크릿 격리는 필수 기능이다.
 
 ## 목표 구조
 
@@ -122,6 +132,12 @@ scripts/                           db:init / db:delete / copy-fonts
 
 - [`docs/roadmap.md`](./docs/roadmap.md) — 최종 목표를 향해 **구현해야 할 것**을 영역별로 명세.
 - [`docs/architecture.md`](./docs/architecture.md) — 그 목표를 **어떻게** 만드는지의 설계 청사진.
+
+## 현재 MVP 기준
+
+첫 운영 가능한 단위는 "Slack webhook 한 채널이 실제 LLM 응답을 안전하게 스트리밍/최종 회신하고, 같은
+코어로 HTTP API 채널을 추가해도 코어 변경이 없는 상태"다. 이 기준을 만족하기 전까지 외부 npm 플러그인
+discovery, 검색 메모리, 이미지 편집 같은 확장 기능은 후순위다.
 
 ## 라이선스
 

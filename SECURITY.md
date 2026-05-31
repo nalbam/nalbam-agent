@@ -32,6 +32,15 @@ In scope — **agent surface (in progress; design in [`docs/architecture.md`](./
 - Two-stage idempotency (`DedupService`) and deny-by-default access control (`AclPolicy`).
 - Per-channel credential isolation (`CredentialProvider`) — secrets in a secret manager (e.g. SSM SecureString), never in code or DynamoDB.
 
+Agent security acceptance criteria before production use:
+
+- Every enabled channel verifies authenticity before normalization and rejects replayed requests.
+- Every agent storage key is scoped by `{channel}:{tenantId}` through a shared key builder.
+- Agent ACL is deny-by-default unless an explicit tenant or deployment policy allows the user/surface.
+- Tool network access is HTTPS-only, size-capped, redirect-controlled, and protected against private/link-local targets.
+- Logs and error payloads redact tokens, signatures, raw request bodies, user-provided bearer values, and secret manager paths that reveal tenant internals.
+- Credential rotation has a bounded cache TTL and an explicit invalidation path.
+
 Out of scope (please report upstream):
 
 - [Better Auth](https://github.com/better-auth/better-auth) core.
@@ -50,6 +59,8 @@ If you deploy this project:
 5. Set `OPERATOR_ALLOWED_EMAILS` in production — when unset, any authenticated user passes (an `operator.allowlist_empty` warning is logged).
 6. Keep per-channel secrets in a secret manager (SSM SecureString / KMS) — never in env vars or DynamoDB.
 7. Keep dependencies current — `pnpm audit` is wired into CI; treat any high/critical finding as blocking.
+8. Treat each channel tenant as a separate security boundary. Do not reuse bot tokens, API tokens, or signing secrets across tenants.
+9. Verify `after()` behavior in your SSR host before accepting webhook traffic. If post-response work can be interrupted, run channel processing through a durable queue/worker.
 
 Watch CloudWatch for these event keys (skeleton; per-channel verification keys are added as each adapter is implemented):
 

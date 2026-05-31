@@ -8,6 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **The current code is a greenfield skeleton** of that design — interfaces and not-implemented stubs that compile, type-check, and pass a small contract test suite. It does **not** yet run a real agent. The previous Slack-only implementation was removed; Slack is now just the first channel adapter, currently a stub. Build real behavior by filling the skeleton per `docs/roadmap.md` "구현 순서" — **without modifying the core for a new channel/tool/provider**.
 
+Current implementation snapshot:
+- Implemented contracts: normalized core types, `ChannelAdapter`/`Responder`/`Capabilities`, channel/tool/provider registries, `runConversation` skeleton, in-memory KV, Better Auth + DynamoDB infrastructure.
+- Stubs: Slack `ingest`/responder/capabilities/credentials, `AgentRuntime`, tenant/dedup/ACL/throttle/memory wiring in `buildPipelineDeps()`, connection worker.
+- Missing channels/tools: Web UI, token HTTP API, Telegram, web/search/document/image tools, DynamoDB-backed agent storage, real credential provider.
+
+MVP acceptance target: Slack webhook must verify and normalize real events, run through KV-backed dedup/throttle + deny-by-default ACL + memory, call a real LLM provider, and reply via Slack. Then add HTTP API as a second channel without touching `src/core`.
+
 ## Commands
 
 Package manager: **pnpm** (Node.js 22+, pnpm 11+ — `engines` and `packageManager` are pinned).
@@ -105,6 +112,8 @@ Target: **AWS Amplify Hosting (SSR)**. Webhook/http channels run on the SSR Lamb
 
 - **`after()` on Amplify SSR is load-bearing** — confirm on first deploy that post-response work (`agent.start` → `agent.done`) runs after the HTTP 200. See [`docs/roadmap.md`](./docs/roadmap.md) §9.
 - **Don't modify the core to add a channel/tool/provider** — implement the interface and self-register via `defineChannel`/`defineTool`/`defineProvider`.
+- **Scope every tenant key** — dedup, throttle, conversation, memory, credentials, and usage must include `{channel}:{tenantId}`. Do not use bare `userId` or `conversationId` in persistent keys.
+- **Capabilities, not channel names** — capability-bound tools should test `ctx.caps`, never `msg.channel === "slack"`.
 - **Webhook signature verification** (when implementing a channel's `ingest`): hash the exact raw bytes — never a JSON parse/stringify round-trip.
 - **`next/font/local`** needs a literal path; the postinstall copy script is intentional.
 - **DynamoDB Local doesn't support TTL** — `pnpm db:init` swallows the error and warns. Production supports it.
