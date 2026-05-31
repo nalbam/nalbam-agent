@@ -18,6 +18,7 @@ import type { ChannelAdapter } from "@/channels/types";
 import type { AgentRuntime } from "@/agent/runtime";
 import type { MemoryStore } from "@/memory/types";
 import type { Logger } from "@/lib/logger";
+import type { StorageProvider } from "@/storage/types";
 
 export interface PipelineDeps {
   tenants: TenantResolver;
@@ -25,6 +26,7 @@ export interface PipelineDeps {
   acl: AclPolicy;
   throttle: ThrottleService;
   memory: MemoryStore;
+  storage: StorageProvider;
   agent: AgentRuntime;
   logger: Logger;
 }
@@ -42,6 +44,7 @@ export async function runConversation(
 
   const dedupScope = `${msg.channel}:${msg.tenantId}:${msg.dedupKey}`;
   const convScope = `${msg.channel}:${msg.tenantId}:${msg.conversationId}`;
+  const userScope = `${msg.channel}:${msg.tenantId}:${msg.userId}`;
 
   if (await deps.dedup.isDone(dedupScope)) {
     log.info("dedup.skip", { reason: "already_done" });
@@ -60,7 +63,7 @@ export async function runConversation(
     return;
   }
 
-  const lease = await deps.throttle.acquire(msg.userId);
+  const lease = await deps.throttle.acquire(userScope);
   if (!lease.allowed) {
     log.info("throttle.limit", {});
     return;

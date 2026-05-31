@@ -1,65 +1,63 @@
-/**
- * Pipeline dependency wiring.
- *
- * Skeleton stub: returns permissive/no-op services so `runConversation` flows
- * end to end and type-checks. Real services (KV-backed dedup/throttle,
- * allowlist ACL, tenant resolver, DynamoDB memory) are wired in later steps.
- */
-import type { AclPolicy } from "@/core/acl";
-import type { DedupService } from "@/core/dedup";
 import type { PipelineDeps } from "@/core/pipeline";
-import type { TenantResolver } from "@/core/tenant";
-import type { ThrottleService } from "@/core/throttle";
-import { stubAgentRuntime } from "@/agent/runtime";
-import type { MemoryStore } from "@/memory/types";
+import { aiSdkAgentRuntime } from "@/agent/runtime";
+import { createAclPolicy } from "@/core/acl-policy";
+import { createKvDedupService } from "@/core/dedup-service";
+import { createStaticTenantResolver } from "@/core/tenant-resolver";
+import { createKvThrottleService } from "@/core/throttle-service";
+import type { TenantConfig } from "@/core/tenant";
+import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { createMemoryStore } from "@/memory/memory-store";
+import { getStorageProvider } from "@/storage/provider";
 
-const passthroughDedup: DedupService = {
-  async isDone() {
-    return false;
-  },
-  async reserve() {
-    return true;
-  },
-  async markDone() {},
+const memory = createMemoryStore();
+
+export interface BuildPipelineDepsOptions {
+  tenants?: TenantConfig[];
+}
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+const parseStaticTenants = (raw: string | undefined): TenantConfig[] => {
+  if (!raw) return [];
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error("AGENT_TENANTS_JSON must be a JSON array.");
+  }
+  return parsed.map((item) => {
+    if (!item || typeof item !== "object") {
+      throw new Error("AGENT_TENANTS_JSON entries must be objects.");
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.channel !== "string" || typeof record.tenantId !== "string") {
+      throw new Error("AGENT_TENANTS_JSON entries require channel and tenantId.");
+    }
+    return {
+      channel: record.channel,
+      tenantId: record.tenantId,
+      allowedChannelIds: isStringArray(record.allowedChannelIds)
+        ? record.allowedChannelIds
+        : undefined,
+      allowedUserIds: isStringArray(record.allowedUserIds) ? record.allowedUserIds : undefined,
+      persona: typeof record.persona === "string" ? record.persona : undefined,
+      language: record.language === "ko" || record.language === "en" ? record.language : undefined,
+    };
+  });
 };
 
-const passthroughThrottle: ThrottleService = {
-  async acquire() {
-    return { allowed: true, release: async () => {} };
-  },
+export const buildPipelineDeps = (opts: BuildPipelineDepsOptions = {}): PipelineDeps => {
+  const env = getServerEnv();
+  const storage = getStorageProvider();
+  const tenants = [...parseStaticTenants(env.AGENT_TENANTS_JSON), ...(opts.tenants ?? [])];
+  return {
+    tenants: createStaticTenantResolver(tenants),
+    dedup: createKvDedupService(storage.kv),
+    acl: createAclPolicy(),
+    throttle: createKvThrottleService(storage.kv, { maxConcurrent: env.MAX_THROTTLE_COUNT }),
+    memory,
+    storage,
+    agent: aiSdkAgentRuntime,
+    logger,
+  };
 };
-
-const allowAllAcl: AclPolicy = {
-  evaluate() {
-    return { allowed: true };
-  },
-};
-
-const nullTenantResolver: TenantResolver = {
-  async resolve() {
-    return null;
-  },
-};
-
-const emptyMemory: MemoryStore = {
-  async loadConversation() {
-    return [];
-  },
-  async appendConversation() {},
-  async remember() {},
-  async forget() {},
-  async loadUserMemory() {
-    return [];
-  },
-};
-
-export const buildPipelineDeps = (): PipelineDeps => ({
-  tenants: nullTenantResolver,
-  dedup: passthroughDedup,
-  acl: allowAllAcl,
-  throttle: passthroughThrottle,
-  memory: emptyMemory,
-  agent: stubAgentRuntime,
-  logger,
-});

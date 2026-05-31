@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import "@/channels";
 import { defineChannel, getChannel, listChannels } from "@/channels/registry";
 import type { ChannelAdapter } from "@/channels/types";
 
@@ -22,5 +23,10 @@ describe("channel registry", () => {
 
   it("returns undefined for an unknown channel", () => {
     expect(getChannel("does_not_exist")).toBeUndefined();
+  });
+
+  it("registers bundled channels", () => {
+    expect(getChannel("api")?.mode).toBe("http");
+    expect(getChannel("slack")?.mode).toBe("webhook");
   });
 });

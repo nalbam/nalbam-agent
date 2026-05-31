@@ -4,6 +4,9 @@ import { runConversation, type PipelineDeps } from "@/core/pipeline";
 import type { ChannelAdapter } from "@/channels/types";
 import type { InboundMessage } from "@/core/types";
 import { logger } from "@/lib/logger";
+import { createMemoryBlobStore } from "@/storage/memory-blob";
+import { createMemoryDocStore } from "@/storage/memory-doc";
+import { createMemoryKv } from "@/storage/memory-kv";
 
 const MSG: InboundMessage = {
   channel: "test",
@@ -40,6 +43,11 @@ const makeDeps = (overrides: Partial<PipelineDeps> = {}): PipelineDeps => ({
     remember: async () => {},
     forget: async () => {},
     loadUserMemory: async () => [],
+  },
+  storage: {
+    kv: createMemoryKv(),
+    doc: createMemoryDocStore(),
+    blob: createMemoryBlobStore(),
   },
   agent: {
     run: async () => ({
@@ -108,6 +116,15 @@ describe("runConversation", () => {
 
     await runConversation(MSG, adapter, deps);
     expect(order).toEqual(["isDone", "reserve", "acl", "throttle", "agent", "egress", "markDone"]);
+  });
+
+  it("passes a channel and tenant scoped key to throttle", async () => {
+    const acquire = vi.fn(async () => ({ allowed: true, release: async () => {} }));
+    const deps = makeDeps({
+      throttle: { acquire },
+    });
+    await runConversation(MSG, makeAdapter(), deps);
+    expect(acquire).toHaveBeenCalledWith("test:t1:u1");
   });
 
   it("stops before the agent when ACL denies", async () => {

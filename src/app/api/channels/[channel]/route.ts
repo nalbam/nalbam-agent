@@ -41,8 +41,41 @@ export async function POST(
     return new Response(result.ack.body ?? "", { status: result.ack.status });
   }
 
-  const deps = buildPipelineDeps();
   const log = requestLogger({ channel });
+  if (adapter.mode === "http") {
+    const deps = buildPipelineDeps({
+      tenants: result.messages.map((msg) => ({
+        channel: msg.channel,
+        tenantId: msg.tenantId,
+        allowedUserIds: [],
+        allowedChannelIds: [],
+      })),
+    });
+    const responses = [];
+    for (const msg of result.messages) {
+      await runConversation(msg, adapter, deps);
+      if (adapter.httpResponse) {
+        responses.push(await adapter.httpResponse(msg));
+      }
+    }
+
+    if (responses.length === 1) {
+      const response = responses[0];
+      return new Response(response?.body ?? "", {
+        status: response?.status ?? 200,
+        headers: response?.headers,
+      });
+    }
+
+    return Response.json(
+      responses.map((response) => ({
+        status: response.status,
+        body: response.body ?? "",
+      })),
+    );
+  }
+
+  const deps = buildPipelineDeps();
   after(async () => {
     for (const msg of result.messages) {
       try {

@@ -2,8 +2,9 @@
  * Storage abstraction (architecture §5.7).
  *
  * `kv` backs dedup/throttle/cache (TTL-aware); `doc` backs tenant metadata,
- * conversation history, and user memory. Implementations: DynamoDB (doc),
- * Redis/Valkey (kv), in-memory (tests).
+ * conversation history, and user memory; `blob` backs attachments, generated
+ * files, and tool artifacts. Implementations: S3 (blob), DynamoDB (doc + kv);
+ * in-memory equivalents back tests.
  */
 export interface KvStore {
   get(key: string): Promise<string | null>;
@@ -33,7 +34,30 @@ export interface DocStore {
   delete(pk: string, sk: string): Promise<void>;
 }
 
+export interface BlobRef {
+  key: string;
+  url?: string;
+  mime?: string;
+  size?: number;
+}
+
+export interface PutBlobInput {
+  channel: string;
+  tenantId: string;
+  name: string;
+  data: Uint8Array;
+  mime?: string;
+}
+
+export interface BlobStore {
+  put(input: PutBlobInput): Promise<BlobRef>;
+  get(key: string): Promise<Uint8Array | null>;
+  delete(key: string): Promise<void>;
+  signedUrl(key: string, opts?: { expiresInSeconds?: number }): Promise<string>;
+}
+
 export interface StorageProvider {
   kv: KvStore;
   doc: DocStore;
+  blob: BlobStore;
 }

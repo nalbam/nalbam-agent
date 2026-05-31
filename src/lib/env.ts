@@ -30,6 +30,12 @@ const trimmedOptional = z
     return t ? t : undefined;
   });
 
+const booleanString = (fallback = false) =>
+  z
+    .union([z.literal("true"), z.literal("false")])
+    .optional()
+    .transform((v) => (v === undefined ? fallback : v === "true"));
+
 const serverSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
@@ -46,9 +52,11 @@ const serverSchema = z.object({
   DYNAMODB_TABLE_NAME: z.string().default("app-main"),
   DYNAMODB_ENDPOINT: z.string().url().optional(),
 
-  REDIS_URL: z.string().optional(),
-  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+  S3_BUCKET_NAME: trimmedOptional,
+  S3_PREFIX: z.string().default("agent"),
+  S3_PUBLIC_BASE_URL: z.string().url().optional(),
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_FORCE_PATH_STYLE: booleanString(false),
 
   AWS_SES_FROM: z.string().email().optional(),
 
@@ -65,17 +73,27 @@ const serverSchema = z.object({
   // in SSM at `{SLACK_SSM_PREFIX}/{api_app_id}/signing_secret` and `.../bot_token`.
   SLACK_SSM_PREFIX: z.string().default("/nalbam-agent/slack/apps"),
   SLACK_SSM_CACHE_TTL_SECONDS: positiveInt(10, 300),
+  // Comma-separated tenant token hashes for the bundled HTTP API channel:
+  //   tenant_id:sha256_hex_token,other_tenant:sha256_hex_token
+  // Raw bearer tokens must not be stored in env.
+  API_CHANNEL_TOKENS: trimmedOptional,
   // Comma-separated email allowlist for the operator UI (under /operator, added
   // later). When unset (default), any Better-Auth-authenticated user passes (an
   // `operator.allowlist_empty` warning is logged). Set in production.
   OPERATOR_ALLOWED_EMAILS: trimmedOptional,
 
   // ── LLM / agent
-  LLM_PROVIDER: z.enum(["openai", "bedrock"]).default("openai"),
+  LLM_PROVIDER: z.enum(["openai", "bedrock", "xai", "gemini", "claude"]).default("openai"),
   LLM_MODEL: z.string().default("gpt-4o-mini"),
   IMAGE_PROVIDER: z.enum(["openai", "bedrock"]).optional(),
   IMAGE_MODEL: z.string().default("gpt-image-1"),
   OPENAI_API_KEY: trimmedOptional,
+  XAI_API_KEY: trimmedOptional,
+  XAI_BASE_URL: trimmedOptional,
+  GEMINI_API_KEY: trimmedOptional,
+  GEMINI_BASE_URL: trimmedOptional,
+  CLAUDE_API_KEY: trimmedOptional,
+  CLAUDE_BASE_URL: trimmedOptional,
   TAVILY_API_KEY: trimmedOptional,
   AGENT_MAX_STEPS: positiveInt(2, 6),
   MAX_OUTPUT_TOKENS: positiveInt(256, 4096),
@@ -84,6 +102,9 @@ const serverSchema = z.object({
   PERSONA_MESSAGE: trimmedOptional,
 
   // ── core behavior (channel-agnostic)
+  // JSON array of static tenant metadata until the operator UI / doc backend
+  // owns tenant configuration.
+  AGENT_TENANTS_JSON: trimmedOptional,
   MAX_HISTORY_CHARS: positiveInt(500, 4000),
   MAX_THROTTLE_COUNT: positiveInt(1, 100),
 
@@ -159,9 +180,11 @@ export const getServerEnv = (): ServerEnv => {
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
     DYNAMODB_TABLE_NAME: process.env.DYNAMODB_TABLE_NAME,
     DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT,
-    REDIS_URL: process.env.REDIS_URL,
-    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
-    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    S3_BUCKET_NAME: process.env.S3_BUCKET_NAME,
+    S3_PREFIX: process.env.S3_PREFIX,
+    S3_PUBLIC_BASE_URL: process.env.S3_PUBLIC_BASE_URL,
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
     AWS_SES_FROM: process.env.AWS_SES_FROM,
     AUTH_EMAIL_ENABLED: process.env.AUTH_EMAIL_ENABLED,
     AUTH_GOOGLE_ID: process.env.AUTH_GOOGLE_ID,
@@ -169,18 +192,26 @@ export const getServerEnv = (): ServerEnv => {
     LOG_LEVEL: process.env.LOG_LEVEL,
     SLACK_SSM_PREFIX: process.env.SLACK_SSM_PREFIX,
     SLACK_SSM_CACHE_TTL_SECONDS: process.env.SLACK_SSM_CACHE_TTL_SECONDS,
+    API_CHANNEL_TOKENS: process.env.API_CHANNEL_TOKENS,
     OPERATOR_ALLOWED_EMAILS: process.env.OPERATOR_ALLOWED_EMAILS,
     LLM_PROVIDER: process.env.LLM_PROVIDER,
     LLM_MODEL: process.env.LLM_MODEL,
     IMAGE_PROVIDER: process.env.IMAGE_PROVIDER,
     IMAGE_MODEL: process.env.IMAGE_MODEL,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    XAI_API_KEY: process.env.XAI_API_KEY,
+    XAI_BASE_URL: process.env.XAI_BASE_URL,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_BASE_URL: process.env.GEMINI_BASE_URL,
+    CLAUDE_API_KEY: process.env.CLAUDE_API_KEY,
+    CLAUDE_BASE_URL: process.env.CLAUDE_BASE_URL,
     TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     AGENT_MAX_STEPS: process.env.AGENT_MAX_STEPS,
     MAX_OUTPUT_TOKENS: process.env.MAX_OUTPUT_TOKENS,
     RESPONSE_LANGUAGE: process.env.RESPONSE_LANGUAGE,
     SYSTEM_MESSAGE: process.env.SYSTEM_MESSAGE,
     PERSONA_MESSAGE: process.env.PERSONA_MESSAGE,
+    AGENT_TENANTS_JSON: process.env.AGENT_TENANTS_JSON,
     MAX_HISTORY_CHARS: process.env.MAX_HISTORY_CHARS,
     MAX_THROTTLE_COUNT: process.env.MAX_THROTTLE_COUNT,
     DEFAULT_TIMEZONE: process.env.DEFAULT_TIMEZONE,

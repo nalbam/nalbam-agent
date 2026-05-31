@@ -6,5 +6,6 @@ export interface ThrottleLease {
 }
 
 export interface ThrottleService {
-  acquire(userId: string): Promise<ThrottleLease>;
+  /** Scope must include channel + tenant + user to avoid cross-tenant contention. */
+  acquire(scope: string): Promise<ThrottleLease>;
 }

@@ -22,6 +22,12 @@ export interface IngestResult {
   ack?: { status: number; body?: string };
 }
 
+export interface ChannelHttpResponse {
+  status: number;
+  body?: string;
+  headers?: Record<string, string>;
+}
+
 export interface Responder {
   append(chunk: OutboundChunk): Promise<void>;
   finalize(text: string, media?: MediaRef[]): Promise<void>;
@@ -60,4 +66,6 @@ export interface ChannelAdapter {
   capabilities(msg: InboundMessage): Capabilities;
   /** Channel markup rules injected into the system prompt. */
   renderingRules(): string;
+  /** Optional synchronous response renderer for `mode: "http"` channels. */
+  httpResponse?(msg: InboundMessage): Promise<ChannelHttpResponse>;
 }

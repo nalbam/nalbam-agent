@@ -1,14 +1,12 @@
-/**
- * Agent runtime (architecture §5.3).
- *
- * Drives a multi-step tool loop over the LLM and streams content to the
- * channel via `Responder`. The concrete implementation (streamText +
- * stepCountIs + forced-compose) lands in a later step; the stub returns an
- * empty result so the pipeline type-checks end to end.
- */
-import type { MediaRef, HistoryEntry, InboundMessage } from "@/core/types";
-import type { TenantConfig } from "@/core/tenant";
+import { stepCountIs, streamText, type ModelMessage } from "ai";
+
+import { getModel } from "@/agent/providers/registry";
+import { buildSystemPrompt } from "@/agent/system-prompt";
+import { buildToolset } from "@/agent/tools/registry";
 import type { Capabilities, Responder } from "@/channels/types";
+import type { TenantConfig } from "@/core/tenant";
+import type { MediaRef, HistoryEntry, InboundMessage } from "@/core/types";
+import { getServerEnv } from "@/lib/env";
 import type { Logger } from "@/lib/logger";
 
 export interface AgentRunInput {
@@ -49,5 +47,68 @@ const EMPTY_RESULT: AgentRunResult = {
 export const stubAgentRuntime: AgentRuntime = {
   async run(): Promise<AgentRunResult> {
     return EMPTY_RESULT;
+  },
+};
+
+const historyToMessages = (history: HistoryEntry[]): ModelMessage[] =>
+  history.map((entry) => ({
+    role: entry.author === "assistant" ? "assistant" : "user",
+    content: entry.text,
+  }));
+
+const buildMessages = (input: AgentRunInput): ModelMessage[] => [
+  ...historyToMessages(input.history),
+  { role: "user", content: input.msg.text },
+];
+
+export const aiSdkAgentRuntime: AgentRuntime = {
+  async run(input): Promise<AgentRunResult> {
+    const env = getServerEnv();
+    const tools = buildToolset({
+      msg: input.msg,
+      caps: input.caps,
+      tenant: input.tenant,
+      log: input.log,
+    });
+
+    const result = streamText({
+      model: getModel({ provider: env.LLM_PROVIDER, model: env.LLM_MODEL }),
+      system: buildSystemPrompt({
+        rendering: input.rendering,
+        systemMessage: env.SYSTEM_MESSAGE,
+        persona: input.tenant?.persona ?? env.PERSONA_MESSAGE,
+        language: input.tenant?.language ?? env.RESPONSE_LANGUAGE,
+      }),
+      messages: buildMessages(input),
+      tools,
+      stopWhen: stepCountIs(env.AGENT_MAX_STEPS),
+      maxOutputTokens: env.MAX_OUTPUT_TOKENS,
+      experimental_telemetry: {
+        isEnabled: false,
+        recordInputs: false,
+        recordOutputs: false,
+      },
+    });
+
+    let text = "";
+    for await (const delta of result.textStream) {
+      text += delta;
+      await input.responder.append({ kind: "delta", text: delta });
+    }
+
+    const [steps, totalUsage, toolCalls] = await Promise.all([
+      result.steps,
+      result.totalUsage,
+      result.toolCalls,
+    ]);
+
+    return {
+      text,
+      steps: steps.length,
+      toolCallCount: toolCalls.length,
+      tokensIn: totalUsage.inputTokens ?? 0,
+      tokensOut: totalUsage.outputTokens ?? 0,
+      forcedCompose: false,
+    };
   },
 };
