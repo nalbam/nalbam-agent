@@ -5,24 +5,21 @@ import { Button } from "@/components/ui/button";
 import { getSession } from "@/lib/auth/session";
 
 const capabilities = [
-  "Multi-tenant Slack apps",
-  "Vercel AI SDK agent loop",
-  "OpenAI + Bedrock providers",
-  "DynamoDB single-table",
-  "AWS SSM SecureString secrets",
-  "Better Auth operator UI",
+  "Multi-tenant — one deployment, many tenants",
+  "Multi-channel via plugin adapters",
+  "Channel-agnostic agent core",
+  "Capability-bound tools",
+  "Pluggable LLM providers",
+  "Pluggable storage & memory",
+  "Per-channel credential isolation",
   "next/server after() handoff",
-  "11 built-in agent tools",
 ];
 
-const tools = [
-  "fetch_webpage",
-  "search_web / search_images",
-  "read_attached_images / document",
-  "fetch_user_profile",
-  "fetch_thread_history",
-  "generate_image · attach_image_from_url",
-  "get_current_time",
+const channels = [
+  "Slack — first channel (in progress)",
+  "Web UI (SSE) — planned",
+  "HTTP API (token) — planned",
+  "Telegram (connection mode) — planned",
 ];
 
 export default async function Home() {
@@ -33,16 +30,16 @@ export default async function Home() {
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center gap-10 px-6 py-12 md:px-12">
       <section className="border-border/60 bg-card/70 rounded-3xl border p-8 shadow-2xl shadow-cyan-500/10 backdrop-blur md:p-12">
         <p className="border-primary/30 bg-primary/10 text-primary mb-4 inline-flex rounded-full border px-3 py-1 text-xs font-semibold tracking-widest uppercase">
-          Slack AI agent
+          Multi-channel AI agent
         </p>
         <h1 className="text-foreground text-3xl leading-tight font-bold md:text-5xl">
-          Multi-tenant Slack bot, one Amplify deployment
+          Multi-tenant, multi-channel, plugin-extensible AI agent
         </h1>
         <p className="text-muted-foreground mt-4 max-w-3xl text-base leading-7 md:text-lg">
-          A multi-tenant Slack AI agent built on Next.js 16 + Vercel AI SDK + DynamoDB single-table,
-          deployed to AWS Amplify SSR. Per-app secrets live in AWS SSM SecureString; ACL and persona
-          overrides live in DynamoDB. Operators register and manage apps from the web UI under{" "}
-          <code>/slack</code> or via <code>pnpm slack-apps</code>.
+          A multi-tenant AI agent on Next.js 16 + Vercel AI SDK + DynamoDB, deployed to AWS Amplify
+          SSR. Channels plug in as adapters: a channel-agnostic core handles every conversation, so
+          Slack, Web, HTTP API, and Telegram all funnel into the same pipeline. Slack is the first
+          channel; the rest follow. See the architecture and roadmap docs.
         </p>
         {user ? (
           <div className="border-border/60 bg-background/60 mt-6 flex flex-wrap items-center gap-4 rounded-2xl border px-5 py-4">
@@ -58,19 +55,16 @@ export default async function Home() {
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button asChild>
-                <Link href="/slack">Manage Slack apps</Link>
-              </Button>
               <SignOutButton />
             </div>
           </div>
         ) : (
           <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/signup?redirect=/slack">Create operator account</Link>
+              <Link href="/signup">Create account</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/login?redirect=/slack">Sign in</Link>
+              <Link href="/login">Sign in</Link>
             </Button>
           </div>
         )}
@@ -88,12 +82,12 @@ export default async function Home() {
 
       <section className="grid gap-6 md:grid-cols-2">
         <article className="border-border/60 bg-card/60 rounded-2xl border p-6">
-          <h2 className="text-foreground text-lg font-semibold">Built-in agent tools</h2>
+          <h2 className="text-foreground text-lg font-semibold">Channels</h2>
           <ul className="text-muted-foreground mt-4 space-y-2 text-sm">
-            {tools.map((tool) => (
-              <li key={tool} className="flex gap-3">
+            {channels.map((channel) => (
+              <li key={channel} className="flex gap-3">
                 <span className="text-primary">·</span>
-                <code className="text-foreground">{tool}</code>
+                <span className="text-foreground">{channel}</span>
               </li>
             ))}
           </ul>
@@ -105,32 +99,22 @@ export default async function Home() {
             <li>
               ·{" "}
               <Link
-                href="https://github.com/nalbam/nalbam-agent/blob/main/docs/slack-bot.md"
+                href="https://github.com/nalbam/nalbam-agent/blob/main/docs/architecture.md"
                 className="text-foreground hover:underline"
               >
-                docs/slack-bot.md
+                docs/architecture.md
               </Link>{" "}
-              — architecture, Slack-side setup, web UI + CLI workflow.
+              — target design: adapters, normalized schema, plugin protocol.
             </li>
             <li>
               ·{" "}
               <Link
-                href="https://github.com/nalbam/nalbam-agent/blob/main/docs/amplify-deploy.md"
+                href="https://github.com/nalbam/nalbam-agent/blob/main/docs/roadmap.md"
                 className="text-foreground hover:underline"
               >
-                docs/amplify-deploy.md
+                docs/roadmap.md
               </Link>{" "}
-              — IAM (DynamoDB + SSM + Bedrock) and env-var reference.
-            </li>
-            <li>
-              ·{" "}
-              <Link
-                href="https://github.com/nalbam/nalbam-agent/blob/main/docs/runbook.md"
-                className="text-foreground hover:underline"
-              >
-                docs/runbook.md
-              </Link>{" "}
-              — registering apps, rotating secrets, after() verification, incident response.
+              — implementation goals per component and build order.
             </li>
           </ul>
         </article>

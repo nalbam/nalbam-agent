@@ -83,18 +83,6 @@ export const sanitizeKeyValue = (value: string): string => {
 // emits UUIDs). `sanitizeKeyValue` is the right gate: it blocks control chars
 // and 1024-char overruns without forbidding `.` or `:`.
 export const keys = {
-  user: (userId: string) => ({
-    PK: `USER#${validateId(userId)}`,
-    SK: "PROFILE",
-  }),
-  project: (projectId: string) => ({
-    PK: `PROJECT#${validateId(projectId)}`,
-    SK: "META",
-  }),
-  userProject: (userId: string, projectId: string) => ({
-    PK: `USER#${validateId(userId)}`,
-    SK: `PROJECT#${validateId(projectId)}`,
-  }),
   slackApp: (apiAppId: string) => ({
     PK: `SLACK_APP#${sanitizeKeyValue(apiAppId)}`,
     SK: "META",
@@ -114,10 +102,6 @@ export const keys = {
 };
 
 export const gsi1 = {
-  byEmail: (email: string) => ({
-    GSI1PK: `EMAIL#${sanitizeKeyValue(email.toLowerCase())}`,
-    GSI1SK: "USER",
-  }),
   bySlackTeam: (teamId: string) => ({
     GSI1PK: `SLACK_APP:TEAM#${sanitizeKeyValue(teamId)}`,
     GSI1SK: "SLACK_APP",
@@ -131,55 +115,3 @@ export const ttlFromDate = (date: Date | string | number): number => {
   }
   return Math.floor(ms / 1000);
 };
-
-export type SingleTableItem =
-  | ({ entity: "USER" } & ReturnType<typeof keys.user> & {
-        id: string;
-        name: string;
-        email: string;
-        createdAt: string;
-      })
-  | ({ entity: "PROJECT" } & ReturnType<typeof keys.project> & {
-        id: string;
-        title: string;
-        description: string;
-        createdAt: string;
-      })
-  | ({ entity: "USER_PROJECT" } & ReturnType<typeof keys.userProject> & {
-        role: "owner" | "member";
-        joinedAt: string;
-      })
-  | ({ entity: "SLACK_APP" } & ReturnType<typeof keys.slackApp> & {
-        apiAppId: string;
-        teamId?: string;
-        teamName?: string;
-        teamDomain?: string;
-        botUserId?: string;
-        botUserName?: string;
-        displayName?: string;
-        allowedChannelIds?: string[];
-        allowedUserIds?: string[];
-        personaMessage?: string;
-        firstSeenAt: number;
-        lastSeenAt: number;
-        GSI1PK?: string;
-        GSI1SK?: string;
-      })
-  | ({ entity: "SLACK_DEDUP" } & ReturnType<typeof keys.slackDedup> & {
-        apiAppId: string;
-        eventKey: string;
-        user: string;
-        ttl: number;
-      })
-  | ({ entity: "SLACK_DONE" } & ReturnType<typeof keys.slackDone> & {
-        apiAppId: string;
-        eventKey: string;
-        user: string;
-        ttl: number;
-      })
-  | ({ entity: "SLACK_THREAD" } & ReturnType<typeof keys.slackThread> & {
-        apiAppId: string;
-        threadTs: string;
-        messages: string;
-        ttl: number;
-      });

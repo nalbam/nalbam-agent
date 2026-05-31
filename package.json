@@ -20,7 +20,6 @@
     "test:ui": "vitest --ui",
     "db:init": "tsx scripts/init-dynamodb.ts",
     "db:delete": "tsx scripts/delete-dynamodb.ts",
-    "slack-apps": "tsx scripts/slack-apps.ts",
     "postinstall": "node scripts/copy-fonts.mjs",
     "prepare": "husky"
   },

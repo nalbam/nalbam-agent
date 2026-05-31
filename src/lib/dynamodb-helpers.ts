@@ -4,10 +4,8 @@ import {
   PutCommand,
   QueryCommand,
   ScanCommand,
-  TransactWriteCommand,
   UpdateCommand,
   type QueryCommandInput,
-  type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 
 import { getDocumentClient, getTableName } from "@/lib/dynamodb";
@@ -46,24 +44,6 @@ export interface QueryOptions {
   };
   projection?: string[];
 }
-
-export const queryByPK = async <T extends Item = Item>(
-  pk: string,
-  skBeginsWith?: string,
-  options: QueryOptions = {},
-): Promise<{ items: T[]; lastKey?: Record<string, unknown> }> => {
-  const expressionNames: Record<string, string> = { "#pk": "PK" };
-  const expressionValues: Record<string, unknown> = { ":pk": pk };
-  let keyCondition = "#pk = :pk";
-
-  if (skBeginsWith !== undefined) {
-    expressionNames["#sk"] = "SK";
-    expressionValues[":sk"] = skBeginsWith;
-    keyCondition += " AND begins_with(#sk, :sk)";
-  }
-
-  return runQuery<T>(keyCondition, expressionNames, expressionValues, options);
-};
 
 export const queryGSI1 = async <T extends Item = Item>(
   gsi1pk: string,
@@ -147,16 +127,6 @@ export const scanAll = async <T extends Item = Item>(
     items: (result.Items as T[] | undefined) ?? [],
     lastKey: result.LastEvaluatedKey,
   };
-};
-
-export const transactWrite = async (
-  items: NonNullable<TransactWriteCommandInput["TransactItems"]>,
-): Promise<void> => {
-  if (items.length === 0) return;
-  if (items.length > 100) {
-    throw new Error("DynamoDB transactWrite supports up to 100 items per call.");
-  }
-  await getDocumentClient().send(new TransactWriteCommand({ TransactItems: items }));
 };
 
 export const updateItem = async (

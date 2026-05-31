@@ -61,15 +61,13 @@ const serverSchema = z.object({
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
 
-  // ── Slack bot multi-tenant secrets are stored in SSM Parameter Store at
-  // `{SLACK_SSM_PREFIX}/{api_app_id}/signing_secret` and `.../bot_token`.
-  // Metadata (team_id, ACL, persona) lives in DynamoDB. See src/lib/slack/*.
+  // ── Slack channel credential provider (in progress). Per-app secrets live
+  // in SSM at `{SLACK_SSM_PREFIX}/{api_app_id}/signing_secret` and `.../bot_token`.
   SLACK_SSM_PREFIX: z.string().default("/nalbam-agent/slack/apps"),
   SLACK_SSM_CACHE_TTL_SECONDS: positiveInt(10, 300),
-  // Comma-separated email allowlist for the operator UI at /slack and the
-  // `pnpm slack-apps` CLI. When unset (default), any Better-Auth-authenticated
-  // user can register / delete / change ACL on Slack apps. Set this in
-  // production to restrict to known operators.
+  // Comma-separated email allowlist for the operator UI (under /operator, added
+  // later). When unset (default), any Better-Auth-authenticated user passes (an
+  // `operator.allowlist_empty` warning is logged). Set in production.
   OPERATOR_ALLOWED_EMAILS: trimmedOptional,
 
   // ── LLM / agent
@@ -85,23 +83,8 @@ const serverSchema = z.object({
   SYSTEM_MESSAGE: trimmedOptional,
   PERSONA_MESSAGE: trimmedOptional,
 
-  // ── Slack rendering / behavior
-  BOT_CURSOR: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || ":robot_face:"),
-  MAX_LEN_SLACK: positiveInt(500, 3000),
+  // ── core behavior (channel-agnostic)
   MAX_HISTORY_CHARS: positiveInt(500, 4000),
-  ALLOWED_CHANNEL_IDS: trimmedOptional,
-  ALLOWED_CHANNEL_MESSAGE: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || "질문은 {} 채널을 이용해 주세요~"),
-  ALLOWED_USER_IDS: trimmedOptional,
-  ALLOWED_USER_MESSAGE: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || "허용된 유저만 응답합니다."),
   MAX_THROTTLE_COUNT: positiveInt(1, 100),
 
   // ── document / web extraction
@@ -198,13 +181,7 @@ export const getServerEnv = (): ServerEnv => {
     RESPONSE_LANGUAGE: process.env.RESPONSE_LANGUAGE,
     SYSTEM_MESSAGE: process.env.SYSTEM_MESSAGE,
     PERSONA_MESSAGE: process.env.PERSONA_MESSAGE,
-    BOT_CURSOR: process.env.BOT_CURSOR,
-    MAX_LEN_SLACK: process.env.MAX_LEN_SLACK,
     MAX_HISTORY_CHARS: process.env.MAX_HISTORY_CHARS,
-    ALLOWED_CHANNEL_IDS: process.env.ALLOWED_CHANNEL_IDS,
-    ALLOWED_CHANNEL_MESSAGE: process.env.ALLOWED_CHANNEL_MESSAGE,
-    ALLOWED_USER_IDS: process.env.ALLOWED_USER_IDS,
-    ALLOWED_USER_MESSAGE: process.env.ALLOWED_USER_MESSAGE,
     MAX_THROTTLE_COUNT: process.env.MAX_THROTTLE_COUNT,
     DEFAULT_TIMEZONE: process.env.DEFAULT_TIMEZONE,
     MAX_DOC_CHARS: process.env.MAX_DOC_CHARS,

@@ -43,7 +43,7 @@ export default async function OgImage() {
           fontWeight: 400,
         }}
       >
-        Slack AI agent
+        Multi-channel AI agent
       </div>
       <div
         style={{

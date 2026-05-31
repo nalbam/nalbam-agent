@@ -43,37 +43,24 @@ describe("sanitizeKeyValue", () => {
 });
 
 describe("keys", () => {
-  it("builds a user key", () => {
-    expect(keys.user("abc")).toEqual({ PK: "USER#abc", SK: "PROFILE" });
+  it("builds a slackApp key", () => {
+    expect(keys.slackApp("A0XXX")).toEqual({ PK: "SLACK_APP#A0XXX", SK: "META" });
   });
 
-  it("builds a project key", () => {
-    expect(keys.project("p1")).toEqual({ PK: "PROJECT#p1", SK: "META" });
-  });
-
-  it("builds a userProject composite key", () => {
-    expect(keys.userProject("u1", "p1")).toEqual({
-      PK: "USER#u1",
-      SK: "PROJECT#p1",
+  it("builds a slackThread key", () => {
+    expect(keys.slackThread("A0XXX", "1700.000")).toEqual({
+      PK: "SLACK_THREAD#A0XXX#1700.000",
+      SK: "META",
     });
-  });
-
-  it("validates ids on both sides of userProject", () => {
-    expect(() => keys.userProject("ok", "bad id")).toThrow();
-    expect(() => keys.userProject("bad id", "ok")).toThrow();
   });
 });
 
-describe("gsi1.byEmail", () => {
-  it("lowercases the email", () => {
-    expect(gsi1.byEmail("USER@Example.COM")).toEqual({
-      GSI1PK: "EMAIL#user@example.com",
-      GSI1SK: "USER",
+describe("gsi1.bySlackTeam", () => {
+  it("builds a team index key", () => {
+    expect(gsi1.bySlackTeam("T1")).toEqual({
+      GSI1PK: "SLACK_APP:TEAM#T1",
+      GSI1SK: "SLACK_APP",
     });
-  });
-
-  it("rejects empty email", () => {
-    expect(() => gsi1.byEmail("")).toThrow();
   });
 });
 

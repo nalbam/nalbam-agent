@@ -1,16 +1,11 @@
 /**
- * Operator-role gate for the Slack management UI + CLI.
+ * Operator-role gate for the (future) operator UI.
  *
  * Resolution: when `OPERATOR_ALLOWED_EMAILS` env is set (CSV), only emails on
  * the list pass. When the env is unset, any Better-Auth-authenticated user
- * passes (with a `slack.operator.allowlist_empty` warning so the operator
- * knows the UI is wide-open). This lets a fresh install bootstrap with the
- * first sign-up while making it trivial to lock down for production.
- *
- * Used by both:
- *   - `src/app/(protected)/slack/layout.tsx` — server-side render gate.
- *   - `src/app/(protected)/slack/actions.ts` — every server action re-checks
- *     as defense-in-depth against direct fetch attacks on the action endpoint.
+ * passes (with an `operator.allowlist_empty` warning so the operator knows the
+ * UI is wide-open). This lets a fresh install bootstrap with the first sign-up
+ * while making it trivial to lock down for production.
  */
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -39,7 +34,7 @@ export const isOperatorAllowed = (
 ): OperatorCheckResult => {
   const allowed = parseAllowedEmails(getServerEnv().OPERATOR_ALLOWED_EMAILS);
   if (allowed.length === 0) {
-    logger.warn("slack.operator.allowlist_empty", { userId: user?.id });
+    logger.warn("operator.allowlist_empty", { userId: user?.id });
     // Empty env = open mode. Still require authentication (handled upstream).
     return { allowed: Boolean(user), unrestricted: true };
   }

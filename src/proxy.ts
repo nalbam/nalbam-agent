@@ -31,5 +31,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/slack/:path*"],
+  // Operator UI lives under /operator (added in a later step). The cheap
+  // cookie check here just bounces anonymous requests before the layout's
+  // real session validation.
+  matcher: ["/operator/:path*"],
 };
