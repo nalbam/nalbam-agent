@@ -17,10 +17,6 @@ jobs:
         image: amazon/dynamodb-local:latest
         ports:
           - 8000:8000
-      valkey:
-        image: valkey/valkey:8-alpine
-        ports:
-          - 6379:6379
 
     env:
       BETTER_AUTH_SECRET: ci-test-secret-1234567890-abcdefghijk
@@ -32,7 +28,6 @@ jobs:
       # Forces the adapter integration suite to run for real instead of
       # silently skipping when the service container is unreachable.
       DDB_INTEGRATION_REQUIRED: "true"
-      REDIS_URL: redis://localhost:6379
       NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_NAME: CI
 

@@ -66,6 +66,24 @@ export const queryGSI1 = async <T extends Item = Item>(
   });
 };
 
+export const queryByPk = async <T extends Item = Item>(
+  pk: string,
+  skBeginsWith?: string,
+  options: Omit<QueryOptions, "indexName"> = {},
+): Promise<{ items: T[]; lastKey?: Record<string, unknown> }> => {
+  const expressionNames: Record<string, string> = { "#pk": "PK" };
+  const expressionValues: Record<string, unknown> = { ":pk": pk };
+  let keyCondition = "#pk = :pk";
+
+  if (skBeginsWith !== undefined && skBeginsWith !== "") {
+    expressionNames["#sk"] = "SK";
+    expressionValues[":sk"] = skBeginsWith;
+    keyCondition += " AND begins_with(#sk, :sk)";
+  }
+
+  return runQuery<T>(keyCondition, expressionNames, expressionValues, options);
+};
+
 const runQuery = async <T extends Item>(
   keyCondition: string,
   expressionNames: Record<string, string>,

@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 
 import { dynamodbAdapter } from "@/lib/auth/dynamodb-adapter";
-import { hasSecondaryStorage, secondaryStorage } from "@/lib/auth/secondary-storage";
+import { secondaryStorage } from "@/lib/auth/secondary-storage";
 import { clientEnv, getServerEnv, trustedOriginsList } from "@/lib/env";
 
 const createAuthInstance = () => {
@@ -19,15 +19,13 @@ const createAuthInstance = () => {
         }
       : undefined;
 
-  const useSecondary = hasSecondaryStorage();
-
   return betterAuth({
     appName: clientEnv.NEXT_PUBLIC_APP_NAME,
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL ?? clientEnv.NEXT_PUBLIC_BETTER_AUTH_URL,
     trustedOrigins,
     database: dynamodbAdapter,
-    secondaryStorage: useSecondary ? secondaryStorage : undefined,
+    secondaryStorage,
     emailAndPassword: {
       enabled: env.AUTH_EMAIL_ENABLED,
     },
@@ -36,7 +34,7 @@ const createAuthInstance = () => {
       enabled: env.NODE_ENV === "production",
       window: 60,
       max: 100,
-      storage: useSecondary ? "secondary-storage" : "memory",
+      storage: "secondary-storage",
     },
     advanced: {
       cookies: {

@@ -14,15 +14,14 @@
  *   1. Content-Type gate — only accept the MIME types real browsers use.
  *      Anything else (`text/plain`, `application/x-www-form-urlencoded`, …)
  *      is dropped at 415 before we parse.
- *   2. IP-keyed rate limit via Better Auth's secondaryStorage when configured.
- *      A misbehaving client (or attacker spraying reports) is throttled at
- *      60 events per minute per IP. Without KV (local dev), we degrade to
- *      "log everything" so the receiver remains useful.
+ *   2. IP-keyed rate limit via the DynamoDB-backed KV store. A misbehaving
+ *      client (or attacker spraying reports) is throttled at 60 events per
+ *      minute per IP. KV transient failures fail-open so reports aren't lost.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 
-import { hasSecondaryStorage, secondaryStorage } from "@/lib/auth/secondary-storage";
+import { secondaryStorage } from "@/lib/auth/secondary-storage";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -53,7 +52,6 @@ const clientIp = (request: NextRequest): string => {
 };
 
 const allowByRateLimit = async (ip: string): Promise<boolean> => {
-  if (!hasSecondaryStorage()) return true;
   const key = `csp-report:${ip}`;
   try {
     // Better Auth's SecondaryStorage.get returns string | object | null; the

@@ -22,8 +22,7 @@ const csp = [
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  // Allow Upstash REST and any custom Better Auth origins. Extend as needed.
-  "connect-src 'self' https://*.upstash.io",
+  "connect-src 'self'",
   "upgrade-insecure-requests",
   `report-uri ${CSP_REPORT_PATH}`,
   `report-to ${REPORT_TO_GROUP}`,

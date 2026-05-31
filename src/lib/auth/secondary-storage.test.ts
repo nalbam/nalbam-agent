@@ -1,66 +1,44 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const ORIGINAL = { ...process.env };
-
-const reload = async () => {
-  vi.resetModules();
-  return await import("./secondary-storage");
-};
-
-describe("hasSecondaryStorage", () => {
-  beforeEach(() => {
-    process.env = { ...ORIGINAL };
-    // Setup file populates some keys with `??=` — explicitly clear them so
-    // assertions below reflect the documented branches rather than test-runner
-    // defaults.
-    delete process.env.UPSTASH_REDIS_REST_URL;
-    delete process.env.UPSTASH_REDIS_REST_TOKEN;
-    delete process.env.REDIS_URL;
-  });
-  afterEach(() => {
-    process.env = { ...ORIGINAL };
-  });
-
-  it("returns false when neither REDIS_URL nor Upstash credentials are set", async () => {
-    const { hasSecondaryStorage } = await reload();
-    expect(hasSecondaryStorage()).toBe(false);
-  });
-
-  it("returns true when only REDIS_URL is set", async () => {
-    process.env.REDIS_URL = "redis://localhost:6379";
-    const { hasSecondaryStorage } = await reload();
-    expect(hasSecondaryStorage()).toBe(true);
-  });
-
-  it("returns true when both Upstash url and token are set", async () => {
-    process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
-    process.env.UPSTASH_REDIS_REST_TOKEN = "tok";
-    const { hasSecondaryStorage } = await reload();
-    expect(hasSecondaryStorage()).toBe(true);
-  });
-
-  it("returns false when Upstash url is set but token is missing", async () => {
-    process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
-    const { hasSecondaryStorage } = await reload();
-    expect(hasSecondaryStorage()).toBe(false);
-  });
+const { kv } = vi.hoisted(() => {
+  const store = new Map<string, string>();
+  return {
+    kv: {
+      store,
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      set: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+      del: vi.fn(async (key: string) => {
+        store.delete(key);
+      }),
+    },
+  };
 });
 
-describe("secondaryStorage facade", () => {
+vi.mock("@/storage/provider", () => ({
+  getStorageProvider: () => ({ kv }),
+}));
+
+import { secondaryStorage } from "./secondary-storage";
+
+describe("secondaryStorage (DynamoDB-backed KV facade)", () => {
   beforeEach(() => {
-    process.env = { ...ORIGINAL };
-    delete process.env.UPSTASH_REDIS_REST_URL;
-    delete process.env.UPSTASH_REDIS_REST_TOKEN;
-    delete process.env.REDIS_URL;
-  });
-  afterEach(() => {
-    process.env = { ...ORIGINAL };
+    kv.store.clear();
+    kv.get.mockClear();
+    kv.set.mockClear();
+    kv.del.mockClear();
   });
 
-  it("throws a descriptive error when no backend is configured", async () => {
-    const { secondaryStorage } = await reload();
-    await expect(secondaryStorage.get("k")).rejects.toThrow(/neither REDIS_URL nor UPSTASH/);
-    await expect(secondaryStorage.set("k", "v")).rejects.toThrow(/neither REDIS_URL nor UPSTASH/);
-    await expect(secondaryStorage.delete("k")).rejects.toThrow(/neither REDIS_URL nor UPSTASH/);
+  it("round-trips set/get/delete through the kv store", async () => {
+    await secondaryStorage.set("k", "v");
+    expect(await secondaryStorage.get("k")).toBe("v");
+    await secondaryStorage.delete("k");
+    expect(await secondaryStorage.get("k")).toBeNull();
+  });
+
+  it("passes the ttl (seconds) through to kv.set", async () => {
+    await secondaryStorage.set("session", "data", 120);
+    expect(kv.set).toHaveBeenCalledWith("session", "data", 120);
   });
 });
