@@ -33,7 +33,7 @@
 └────────┼──────────────────────────────────────────────────────────────────────────┘
          ▼  InboundMessage (정규화 envelope)
 ┌─────────────────────────── Gateway / Core pipeline ────────────────────────────────┐
-│  resolve tenant → dedup → ACL → throttle → load context → run agent → persist       │
+│  dedup → resolve tenant → ACL → throttle → load context → run agent → persist       │
 └────────┼────────────────────────────────────────────────────────────────────────────┘
          ▼  ConversationRequest
 ┌─────────────────────────── Agent runtime ──────────────────────────────────────────┐
@@ -100,6 +100,9 @@ interface ChannelAdapter {
 
   // 도구가 의존하는 채널 능력 (없으면 해당 도구 미등록)
   capabilities(msg: InboundMessage): Capabilities;
+
+  // 채널 마크업 규칙 — 시스템 프롬프트에 주입 (Slack=mrkdwn, Web=markdown, …)
+  renderingRules(): string;
 }
 
 interface Responder {
@@ -130,9 +133,9 @@ interface Responder {
 채널 무관. `InboundMessage` 하나를 받아 처리한다.
 
 ```ts
-async function runConversation(msg: InboundMessage, adapter: ChannelAdapter): Promise<void> {
-  // 1. tenant 해석 + 설정 로드
-  // 2. dedup: reserve(channel:tenant:dedupKey) — 이미 처리/진행 중이면 종료
+async function runConversation(msg: InboundMessage, adapter: ChannelAdapter, deps: PipelineDeps): Promise<void> {
+  // 1. dedup: reserve(channel:tenant:dedupKey) — 이미 처리/진행 중이면 종료 (작업 전 멱등 예약)
+  // 2. tenant 해석 + 설정 로드
   // 3. ACL: surface(dm/channel) + user allowlist (테넌트 override > 전역)
   // 4. throttle: 사용자별 동시 요청
   // 5. context: 대화 히스토리 + 메모리 로드
@@ -161,9 +164,10 @@ dedup/throttle/conversation 키는 모두 `{channel}:{tenantId}:…`로 스코�
 ```ts
 interface Capabilities {
   fetchHistory?(limit: number): Promise<HistoryEntry[]>;
-  downloadAttachment?(ref: AttachmentRef): Promise<Blob>;
+  downloadAttachment?(ref: AttachmentRef): Promise<Uint8Array>;
   uploadMedia?(media: MediaRef): Promise<{ url: string }>;
   fetchUserProfile?(userId: string): Promise<Profile>;
+  describeImage?(data: Uint8Array, mime: string): Promise<string>;
 }
 ```
 

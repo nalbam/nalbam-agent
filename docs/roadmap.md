@@ -28,7 +28,7 @@
 
 ## 2. 코어 파이프라인
 
-- [ ] 🟡 채널 무관 `runConversation(message, adapter)` — dedup → ACL → throttle → context → agent → egress → persist.
+- [ ] 🟡 채널 무관 `runConversation(message, adapter, deps)` — dedup → tenant → ACL → throttle → context → agent → egress → persist.
 - [ ] 🟡 dedup · throttle · conversation 키를 `{channel}:{tenant}` 스코프로.
 - [ ] 🟡 2단계 멱등성(in-flight 예약 + 완료 마커)으로 재시도·중복 흡수.
 - [ ] 🟡 대화 히스토리 동시 쓰기 충돌 방지(OCC).

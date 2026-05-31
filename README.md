@@ -8,8 +8,9 @@
 - 목표 설계(계층·인터페이스·플러그인 프로토콜·실행 모델): [`docs/architecture.md`](./docs/architecture.md)
 - 구현 목표(영역별 명세 + 순서): [`docs/roadmap.md`](./docs/roadmap.md)
 
-> **현재 상태**: 목표의 첫 단계로 **Slack 채널**을 구현 중이다. 입력·회신·도구·자격증명이
-> 아직 Slack에 결합되어 있으며, 이를 채널 무관 코어 + 어댑터로 일반화하는 것이 진행 방향이다.
+> **현재 상태**: 이 설계를 향한 **그린필드 골격**이다 — 인터페이스와 스텁이 `typecheck`·`build`·`test`를
+> 통과하지만 실제 에이전트는 아직 동작하지 않는다. Slack은 첫 채널 어댑터이되 현재는 스텁이다.
+> [`docs/roadmap.md`](./docs/roadmap.md) "구현 순서"대로 코어를 채워간다.
 
 ## 목표 구조
 
@@ -50,7 +51,7 @@ flowchart LR
 - Vercel AI SDK 6 (`@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`)
 - Better Auth (operator UI) · DynamoDB 단일 테이블 + Redis/Valkey(KV)
 - Tailwind v4 + shadcn/ui (`new-york`) · Vitest
-- `@slack/web-api` · `unpdf` — Slack 채널·문서 도구 구현(예정)용으로 의존성에 포함
+- `@slack/web-api` · `unpdf` · `@aws-sdk/client-ssm` — Slack 채널·문서 도구·자격증명 구현(예정)용으로 의존성에 포함
 
 ## 빠른 시작
 
