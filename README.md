@@ -43,26 +43,25 @@ flowchart LR
 채널 어댑터가 native 페이로드를 `InboundMessage`로 정규화하고, 코어는 채널을 모른 채 처리하며,
 응답은 `Responder`가 채널 native 포맷으로 렌더링한다. 상세는 [`docs/architecture.md`](./docs/architecture.md).
 
-## 기술 스택 (현재 구현)
+## 기술 스택
 
 - Node.js 22 · pnpm 11 · TypeScript `strict + noUncheckedIndexedAccess`
 - Next.js 16 (App Router) · React 19
 - Vercel AI SDK 6 (`@ai-sdk/openai` + `@ai-sdk/amazon-bedrock`)
-- `@slack/web-api` (현재 채널)
-- Better Auth (operator UI)
-- DynamoDB 단일 테이블 + Redis/Valkey(KV)
-- Tailwind v4 + shadcn/ui (`new-york`)
-- Vitest
+- Better Auth (operator UI) · DynamoDB 단일 테이블 + Redis/Valkey(KV)
+- Tailwind v4 + shadcn/ui (`new-york`) · Vitest
+- `@slack/web-api` · `unpdf` — Slack 채널·문서 도구 구현(예정)용으로 의존성에 포함
 
 ## 빠른 시작
 
-현재 구현된 경로(Slack 채널 + operator UI)로 로컬 실행한다. AWS 자격증명이 로컬 체인
-(`aws configure` / `aws sso login` / `AWS_PROFILE`)에 있어야 한다 — dev 서버가 실제 DynamoDB·SSM을 사용한다.
+현재는 **골격 단계**다 — 인터페이스와 스텁으로 `typecheck`·`build`·`test`가 통과하지만 에이전트는
+아직 동작하지 않는다(전 경로 스텁). 로컬 실행 시 AWS 자격증명이 로컬 체인
+(`aws configure` / `aws sso login` / `AWS_PROFILE`)에 있어야 한다 — dev 서버가 실제 DynamoDB를 사용한다.
 
 ```bash
 cp .env.example .env.local
-# 최소: BETTER_AUTH_SECRET (openssl rand -base64 32), OPENAI_API_KEY,
-#       AWS_REGION, DYNAMODB_TABLE_NAME
+# 최소: BETTER_AUTH_SECRET (openssl rand -base64 32), AWS_REGION, DYNAMODB_TABLE_NAME
+#       (OPENAI_API_KEY는 LLM provider 사용 시)
 
 docker compose up -d         # Valkey (Better Auth secondaryStorage용 KV)
 pnpm install
@@ -70,12 +69,7 @@ pnpm db:init                 # DynamoDB 테이블 + GSI1 + TTL 생성
 pnpm dev                     # http://localhost:3000
 ```
 
-Slack 앱 등록(현재 채널):
-
-```bash
-pnpm slack-apps register A0XXXXXXXXX   # signing_secret + bot_token 프롬프트(숨김 입력)
-# 또는 operator 웹 UI: /signup 후 /slack/new
-```
+채널 어댑터·도구·메모리·저장소는 구현 예정 — [`docs/roadmap.md`](./docs/roadmap.md) "구현 순서" 참고.
 
 ## 스크립트
 
@@ -87,33 +81,30 @@ pnpm slack-apps register A0XXXXXXXXX   # signing_secret + bot_token 프롬프트
 | `pnpm format` / `format:check` | Prettier |
 | `pnpm test` / `test:watch` / `test:ui` | Vitest |
 | `pnpm db:init` / `db:delete` | DynamoDB 테이블 생성 / 삭제 |
-| `pnpm slack-apps` | operator CLI — `list / get / register / delete / acl / persona / name` |
 
-## 프로젝트 레이아웃 (현재 구현)
+## 프로젝트 레이아웃 (골격)
 
 ```
 src/
+├── core/              도메인 모델 · runConversation 파이프라인 · dedup/acl/throttle 계약 · deps
+├── channels/          ChannelAdapter 레지스트리 + slack/ (스텁)
+├── agent/             runtime(스텁) · system-prompt · providers/(openai·bedrock) · tools/
+├── storage/           StorageProvider(kv+doc) + memory-kv
+├── memory/            MemoryStore (단기·장기·검색)
+├── credentials/       CredentialProvider
+├── observability/     요청 스코프 로거
+├── worker/            connection 모드 worker (스텁)
 ├── app/
-│   ├── (auth)/                       operator UI 인증 (sign-up/in)
-│   ├── (protected)/slack/            operator UI: list / register / edit / delete
-│   ├── api/
-│   │   ├── auth/[...all]             Better Auth handler
-│   │   ├── slack/events              Slack receiver (verify + dedup + after())
-│   │   ├── health                    헬스 프로브
-│   │   └── csp-report                CSP 위반 수신
-│   └── globals.css                   디자인 토큰
-├── components/ui/                    shadcn primitives
-├── lib/
-│   ├── slack/                        현재 Slack 채널 구현 (verify/credentials/dedup/
-│   │                                 conversation/stream/acl/agent/tools/handlers/…)
-│   ├── llm/                          provider factory + vision
-│   ├── auth/                         Better Auth + DynamoDB adapter + KV
-│   ├── dynamodb*.ts                  단일 테이블 키/헬퍼
-│   ├── env.ts                        zod 검증 env
-│   └── logger.ts                     구조 로깅
-├── instrumentation.ts                Next.js register() 훅
-└── proxy.ts                          세션 쿠키 체크
-scripts/                              db:init / db:delete / slack-apps / copy-fonts
+│   ├── (auth)/                    operator UI 인증 (sign-up/in)
+│   ├── (protected)/               보호 레이아웃 (operator UI 예정)
+│   ├── api/channels/[channel]     통합 채널 ingress (webhook/http)
+│   ├── api/auth · health · csp-report
+│   └── globals.css                디자인 토큰
+├── components/ui/                 shadcn primitives
+├── lib/                           재사용 인프라 (env · logger · dynamodb · auth · email)
+├── instrumentation.ts             Next.js register() 훅
+└── proxy.ts                       세션 쿠키 체크
+scripts/                           db:init / db:delete / copy-fonts
 ```
 
 ## 환경 변수
@@ -123,7 +114,6 @@ scripts/                              db:init / db:delete / slack-apps / copy-fo
 - `BETTER_AUTH_SECRET` (≥ 32자) — operator UI 세션
 - `AWS_REGION`, `DYNAMODB_TABLE_NAME` — DynamoDB
 - `OPENAI_API_KEY` — `LLM_PROVIDER=openai`(기본) 시 필수
-- `SLACK_SSM_PREFIX` (기본 `/nalbam-agent/slack/apps`)
 
 `src/lib/env.ts`가 모든 변수를 zod로 검증하고 실패 시 다중 줄 요약으로 fail-fast.
 

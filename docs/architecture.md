@@ -6,7 +6,7 @@
 정규화 스키마" 패턴을 토대로, serverless(Amplify SSR)와 long-running worker 양쪽을 수용하도록 확장한다.
 
 > 이 문서는 **목표 설계**(어떻게)다. 구현해야 할 목표 항목은 [`docs/roadmap.md`](./roadmap.md)를 본다.
-> 현재 구현은 Slack 채널이며, 코드(`src/lib/slack/`)가 그 기준이다.
+> 현재 구현은 이 설계를 향한 **골격**(인터페이스 + 스텁)이며, 진행 상태는 roadmap을 본다.
 
 ## 1. 목표
 
