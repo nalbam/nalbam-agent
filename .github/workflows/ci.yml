@@ -32,7 +32,7 @@ jobs:
       NEXT_PUBLIC_APP_NAME: CI
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
         with:
